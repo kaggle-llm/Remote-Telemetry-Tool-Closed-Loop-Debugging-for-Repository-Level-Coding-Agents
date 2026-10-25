@@ -69,26 +69,15 @@ alter table public.tool_api_keys enable row level security;
 alter table public.ai_sessions enable row level security;
 alter table public.client_logs enable row level security;
 
-create or replace function public.upsert_google_user(p_google_sub text, p_email text, p_display_name text, p_avatar_url text)
-returns public.users
-language plpgsql security definer set search_path = ''
-as $$
-declare v_user public.users;
-begin
-  insert into public.users (google_sub, email, display_name, avatar_url)
-  values (p_google_sub, p_email, p_display_name, p_avatar_url)
-  on conflict (google_sub) do update set email = excluded.email, display_name = excluded.display_name,
-    avatar_url = excluded.avatar_url, updated_at = now()
-  returning * into v_user;
-  return v_user;
-end;
-$$;
-revoke all on function public.upsert_google_user(text, text, text, text) from public, anon, authenticated;
-grant execute on function public.upsert_google_user(text, text, text, text) to service_role;
-
 -- No anon/authenticated table policies or grants: dashboard operations go through the custom backend.
 revoke all on public.users, public.app_sessions, public.tool_api_keys, public.ai_sessions from anon, authenticated;
 revoke all on public.client_logs from anon, authenticated;
+
+-- The custom backend uses a Supabase server secret (service_role) for these operations.
+-- Keep this credential server-side only. RLS is enabled above; service_role bypasses RLS.
+grant select, insert, update, delete on public.users, public.app_sessions,
+  public.tool_api_keys, public.ai_sessions, public.client_logs to service_role;
+grant usage, select on all sequences in schema public to service_role;
 
 create or replace function public.read_session_logs(p_tool_key text, p_session_key text, p_limit integer default 50)
 returns setof public.client_logs

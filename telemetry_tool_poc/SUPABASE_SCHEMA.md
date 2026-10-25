@@ -4,7 +4,7 @@ This configuration does **not** use Supabase Auth. Google OAuth is performed by 
 
 ## Setup
 
-1. Apply `supabase_setup.sql` in Supabase SQL Editor. It creates app-owned users, `client_logs`, app sessions, tool keys, AI sessions, and scoped log RPCs. The SQL creates `public.client_logs` if it does not exist.
+1. Apply the latest `supabase_setup.sql` in Supabase SQL Editor. It creates app-owned users, `client_logs`, app sessions, tool keys, AI sessions, scoped log RPCs, and the required `service_role` table grants. The SQL creates `public.client_logs` if it does not exist.
 2. Create a Google OAuth web client in Google Cloud. Set the authorized redirect URI to `GOOGLE_CALLBACK_URL` (for local development: `http://localhost:5174/api/auth/google/callback`).
 3. Copy `web_demo/.env.example` to `web_demo/.env` and set the real backend environment values there. The server loads `.env` via `dotenv`; `.env` is ignored by Git. Never commit or share the populated file.
 
@@ -18,11 +18,11 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SECRET_KEY=<server-only-secret-key>
 ```
 
-4. Start the backend and Vite frontend. The secret key is **server-only**; never put it in Vite `VITE_*` values, browser code, the mobile app, or an AI prompt. Production must use HTTPS and a managed secret store.
+4. Start both the backend (`npm run dev:api`, port 5175) and Vite frontend (`npm run dev`, normally port 5173). Open the Vite origin (`APP_ORIGIN`), not the backend port; OAuth callback redirects there after login. The secret key is **server-only**; never put it in Vite `VITE_*` values, browser code, the mobile app, or an AI prompt. Production must use HTTPS and a managed secret store.
 
 ## Identity and session model
 
-- Google authenticates the human. Backend validates OAuth state, token signature/audience and verified email.
+- Google authenticates the human. Backend validates OAuth state, token signature/audience and verified email, then upserts the app-owned user via its server-only Supabase key.
 - `public.users.google_sub` is the stable Google identity; `public.users.id` is the application's own UUID.
 - `public.app_sessions` stores a hash of a random opaque session ID, expiry, and user ID. The signed `tl_session` cookie is HttpOnly, SameSite=Lax, Secure in production.
 - The app does not issue Supabase Auth JWTs and does not use `auth.users`.

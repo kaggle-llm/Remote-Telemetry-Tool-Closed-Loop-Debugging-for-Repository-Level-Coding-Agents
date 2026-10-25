@@ -60,39 +60,40 @@ function sameOrigin(req, res, next) {
 
 app.get("/api/auth/google", async (_req, res) => {
   const state = crypto.randomBytes(24).toString("base64url");
-  res.cookie("oauth_state", state, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: 600000, path: "/" });
+  const stateToken = `${state}.${sign(state)}`;
   const nonce = crypto.randomBytes(24).toString("base64url");
   res.cookie("oauth_nonce", nonce, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: 600000, path: "/" });
-  const url = await google.generateAuthUrl({ scope: ["openid", "email", "profile"], state, nonce, prompt: "select_account" });
+  const url = await google.generateAuthUrl({ scope: ["openid", "email", "profile"], state: stateToken, nonce, prompt: "select_account" });
   res.redirect(url);
 });
 
 app.get("/api/auth/google/callback", async (req, res) => {
   try {
     if (req.query.error) return res.status(401).send("Google sign-in was cancelled or denied.");
-    if (!req.query.state || req.query.state !== req.cookies.oauth_state) return res.status(400).send("OAuth state validation failed.");
-    res.clearCookie("oauth_state", { path: "/" });
+    const [state, stateSignature, extra] = String(req.query.state || "").split(".");
+    if (!state || !stateSignature || extra || !validSignedValue(state, stateSignature)) return res.status(400).send("OAuth state validation failed. Start a new Google sign-in from the app.");
     const expectedNonce = req.cookies.oauth_nonce;
     res.clearCookie("oauth_nonce", { path: "/" });
-    if (!expectedNonce) return res.status(400).send("OAuth nonce missing.");
+    if (!expectedNonce) return res.status(400).send("OAuth nonce missing. Start a new Google sign-in from the app.");
     const { tokens } = await google.getToken(String(req.query.code || ""));
     if (!tokens.id_token) return res.status(401).send("Google ID token missing.");
     const ticket = await google.verifyIdToken({ idToken: tokens.id_token, audience: process.env.GOOGLE_CLIENT_ID });
     const identity = ticket.getPayload();
     if (!identity?.sub || !identity.email || identity.email_verified !== true || identity.nonce !== expectedNonce) return res.status(401).send("Verified Google account required.");
-    const { data: user, error: userError } = await db.rpc("upsert_google_user", {
-      p_google_sub: identity.sub,
-      p_email: identity.email,
-      p_display_name: identity.name || null,
-      p_avatar_url: identity.picture || null,
-    });
+    const { data: user, error: userError } = await db.from("users").upsert({
+      google_sub: identity.sub,
+      email: identity.email,
+      display_name: identity.name || null,
+      avatar_url: identity.picture || null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "google_sub" }).select("id").single();
     if (userError) throw userError;
     const sid = crypto.randomBytes(32).toString("base64url");
     const expiresAt = new Date(Date.now() + 7 * 86400000).toISOString();
     const { error: sessionError } = await db.from("app_sessions").insert({ user_id: user.id, token_hash: digest(sid), expires_at: expiresAt });
     if (sessionError) throw sessionError;
     setSessionCookie(res, JSON.stringify({ sid, exp: Date.parse(expiresAt) }));
-    return res.redirect("/");
+    return res.redirect(process.env.APP_ORIGIN);
   } catch (error) {
     console.error("Google OAuth callback failed:", error.message);
     return res.status(401).send("Google sign-in failed. Return to the app and try again.");
@@ -116,10 +117,11 @@ app.get("/api/auth/logout", async (req, res) => {
     } catch {}
   }
   res.clearCookie("tl_session", { path: "/" });
-  res.redirect("/");
+  res.redirect(process.env.APP_ORIGIN);
 });
 
-app.get("/api/me", requireUser, (_req, res) => res.json({ user: req.user }));
+app.get("/api/me", requireUser, (req, res) => res.json({ user: req.user }));
+app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
 
 app.get("/api/keys", requireUser, async (req, res) => {
   const { data, error } = await db.from("tool_api_keys").select("id,name,key_prefix,revoked_at,created_at").eq("user_id", req.user.id).order("created_at", { ascending: false });

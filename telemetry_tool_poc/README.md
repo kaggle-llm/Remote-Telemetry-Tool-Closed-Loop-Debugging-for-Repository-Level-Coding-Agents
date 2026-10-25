@@ -19,7 +19,7 @@ npm run dev
 
 Vite runs on port 5173 and proxies `/api` to the backend on port 5175. For production, serve the built frontend and API behind the same HTTPS origin/reverse proxy.
 
-Open `http://localhost:5173/` and sign in with Google.
+Open the Vite frontend at `http://localhost:5173/` and sign in with Google. Do not open the API backend at port 5175 as the web page; it serves API routes only in development.
 
 Run `supabase_setup.sql` before using the dashboard. Configure Google OAuth redirect URL to the backend callback. Set the backend environment variables described in `SUPABASE_SCHEMA.md`. Never expose Supabase secret key in browser code.
 
