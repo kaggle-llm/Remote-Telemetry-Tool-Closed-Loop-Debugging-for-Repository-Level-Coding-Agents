@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Telemetry Lab | Client Log Demo</title>
+  <script type="module" src="/src/main.js"></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <a class="wordmark" href="#top" aria-label="Telemetry Lab ana sayfa"><span class="mark">T</span> telemetry<span class="muted">/lab</span></a>
+      <div class="top-status"><span class="status-dot connected"></span><span>Sunum modu · yerel demo</span></div>
+    </header>
+
+    <section class="intro" id="top">
+      <p class="eyebrow">REMOTE CLIENT OBSERVABILITY · DEMO</p>
+      <h1>Uzak istemci.<br><em>Görünür hata.</em></h1>
+      <p class="lede">Highlight paleti açılmadığında istemciden yapılandırılmış telemetri gönder, oturum sahibinin loglarını incele.</p>
+    </section>
+
+    <section class="workspace">
+      <section class="panel auth-panel" aria-labelledby="auth-title">
+        <div class="panel-heading"><div><p class="eyebrow">01 / DEMO IDENTITY</p><h2 id="auth-title">Sunum kullanıcısı</h2></div><span class="step-number">A</span></div>
+        <p class="user-email">ios-demo-user</p>
+        <p class="hint">Sunum modu örnek kullanıcı kullanır. Hesap açma veya e-posta doğrulaması gerekmez.</p>
+      </section>
+
+      <section class="panel simulator" aria-labelledby="simulator-title">
+        <div class="panel-heading"><div><p class="eyebrow">02 / CLIENT EVENT</p><h2 id="simulator-title">Hata üret</h2></div><span class="step-number">B</span></div>
+        <div class="phone-card">
+          <div class="phone-head"><span class="phone-camera"></span><span>Note / Editor</span><span class="phone-signal">● ● ●</span></div>
+          <div class="selection-copy">“A system for remembering<br>what matters.”<span class="highlight"></span></div>
+          <div class="phone-toolbar"><span> Aa </span><span> B </span><span> I </span><button id="palette-trigger" aria-label="Highlight renk paletini aç">✦</button><span>···</span></div>
+          <div id="palette" class="palette" hidden><span class="swatch swatch-yellow"></span><span class="swatch swatch-pink"></span><span class="swatch swatch-blue"></span><span class="swatch swatch-green"></span><span class="palette-label">Highlight</span></div>
+          <p id="simulator-message" class="sim-message">Metni seçip highlight düğmesine bas.</p>
+        </div>
+        <button class="button button-accent full-button" id="simulate-button">Paleti açmayı dene ve logla</button>
+        <p class="hint">Tek tıkla örnek hata oluşturulur ve yerel demo günlüğüne eklenir.</p>
+      </section>
+    </section>
+
+    <section class="panel logs-panel" aria-labelledby="logs-title">
+      <div class="panel-heading logs-heading"><div><p class="eyebrow">03 / TELEMETRY</p><h2 id="logs-title">İstemci olayları</h2></div><div class="log-actions"><span id="log-count" class="tag">0 kayıt</span><button class="button button-light" id="refresh-button">Temizle</button></div></div>
+      <div id="notice" class="notice" role="status" aria-live="polite">Sunum modu hazır. Test hatası oluşturmak için düğmeye bas.</div>
+      <div id="logs-list" class="logs-list"><div class="empty-state"><span class="empty-icon">⌁</span><p>Henüz gösterilecek olay yok.</p><span>Oturum açtıktan sonra simülatörden test logu gönder.</span></div></div>
+    </section>
+
+    <footer><span>TELEMETRY LAB · LOCAL PROTOTYPE</span><span>Auth → RLS → client_logs</span></footer>
+  </main>
+</body>
+</html>
