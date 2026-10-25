@@ -28,7 +28,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use((req, res, next) => {
-  if (req.path.startsWith("/api/") && req.method !== "GET" && req.method !== "HEAD" && !req.get("origin")) {
+  if (req.path.startsWith("/api/") && !req.path.startsWith("/api/tool/") && req.method !== "GET" && req.method !== "HEAD" && !req.get("origin")) {
     return res.status(403).json({ error: "Origin header required." });
   }
   next();
@@ -155,18 +155,67 @@ app.get("/api/sessions", requireUser, async (req, res) => {
   res.json(data);
 });
 
-app.post("/api/sessions", sameOrigin, requireUser, async (req, res) => {
-  const secret = randomKey("tls");
-  const name = String(req.body.name || "AI session").slice(0, 80);
-  const { data, error } = await db.from("ai_sessions").insert({ user_id: req.user.id, name, session_hash: digest(secret), session_prefix: secret.slice(0, 12) }).select("id,name,session_prefix,revoked_at,created_at").single();
-  if (error) return res.status(500).json({ error: "Could not create AI session." });
-  res.json({ ...data, secret });
-});
-
 app.post("/api/sessions/:id/revoke", sameOrigin, requireUser, async (req, res) => {
   const { error } = await db.from("ai_sessions").update({ revoked_at: new Date().toISOString() }).eq("id", req.params.id).eq("user_id", req.user.id);
   if (error) return res.status(500).json({ error: "Could not revoke AI session." });
   res.status(204).end();
+});
+
+async function requireToolKey(req, res, next) {
+  try {
+    const match = /^Bearer (tlk_[A-Za-z0-9_-]{40,})$/.exec(req.get("authorization") || "");
+    if (!match) return res.status(401).json({ error: "Developer tool key required." });
+    const { data, error } = await db.from("tool_api_keys").select("id,user_id").eq("key_hash", digest(match[1])).is("revoked_at", null).maybeSingle();
+    if (error || !data) return res.status(401).json({ error: "Invalid or revoked developer key." });
+    req.toolKey = match[1];
+    req.toolOwner = data;
+    next();
+  } catch {
+    res.status(401).json({ error: "Developer key validation failed." });
+  }
+}
+
+app.post("/api/tool/sessions", sameOrigin, requireToolKey, async (req, res) => {
+  const sessionKey = randomKey("tls");
+  const name = String(req.body?.name || "AI run").slice(0, 80);
+  const { data, error } = await db.from("ai_sessions").insert({
+    user_id: req.toolOwner.user_id,
+    run_id: crypto.randomBytes(16).toString("hex"),
+    name,
+    session_hash: digest(sessionKey),
+    session_prefix: sessionKey.slice(0, 12),
+  }).select("id,name,session_prefix,created_at").single();
+  if (error?.code === "23505") return res.status(409).json({ error: "AI run ID already exists. Start a new process to create a distinct session." });
+  if (error?.code === "23505") return res.status(409).json({ error: "Duplicate AI session identifier." });
+  if (error) return res.status(500).json({ error: "Could not create AI session." });
+  res.status(201).json({ id: data.id, name: data.name, session_prefix: data.session_prefix, created_at: data.created_at, session_key: sessionKey });
+});
+
+app.post("/api/tool/logs", sameOrigin, requireToolKey, async (req, res) => {
+  const sessionKey = req.body?.session_key;
+  if (typeof sessionKey !== "string" || !sessionKey.startsWith("tls_")) return res.status(400).json({ error: "AI session key required." });
+  const limit = Number(req.body?.limit ?? 20);
+  const { data, error } = await db.rpc("read_session_logs", {
+    p_tool_key: req.toolKey,
+    p_session_key: sessionKey,
+    p_limit: limit,
+  });
+  if (error) return res.status(403).json({ error: "Session is invalid, revoked, or does not belong to this developer key." });
+  res.json(data);
+});
+
+app.post("/api/tool/logs/write", sameOrigin, requireToolKey, async (req, res) => {
+  const { session_key: sessionKey, level, event, detail } = req.body || {};
+  if (typeof sessionKey !== "string" || !sessionKey.startsWith("tls_")) return res.status(400).json({ error: "AI session key required." });
+  const { data, error } = await db.rpc("write_session_log", {
+    p_tool_key: req.toolKey,
+    p_session_key: sessionKey,
+    p_level: level,
+    p_event: event,
+    p_detail: detail,
+  });
+  if (error) return res.status(403).json({ error: "Log rejected: invalid key/session pair or invalid event." });
+  res.status(201).json(data);
 });
 
 app.use(express.static(new URL("../dist", import.meta.url).pathname));

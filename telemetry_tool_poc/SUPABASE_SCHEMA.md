@@ -30,9 +30,9 @@ SUPABASE_SECRET_KEY=<server-only-secret-key>
 
 ## AI key/session scope
 
-The dashboard generates high-entropy `tlk_...` tool keys and `tls_...` AI-session keys. Only SHA-256 hashes/prefixes are persisted. The AI process calls `read_session_logs` / `write_session_log` with the publishable project key plus both secrets. Postgres resolves the user from the tool key and requires the session key to belong to that same user; each log is linked to `ai_sessions.id`.
+The dashboard generates high-entropy `tlk_...` developer keys. Each AI process calls `start_ai_session` using that developer key; the backend then generates a fresh `tls_...` session key. Only SHA-256 hashes/prefixes are persisted. The AI tool keeps the raw session key in process memory, while read/write requests send it with the developer key to the backend. The backend resolves the owner and enforces that the session belongs to that developer key; each log is linked to `ai_sessions.id`.
 
-For the Python tool, put `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `TELEMETRY_TOOL_KEY`, and `TELEMETRY_SESSION_KEY` in the AI runtime's secret store/environment. Register `telemetry_tool.fetch_session_logs_for_agent` and `telemetry_tool.write_session_log_for_agent`; expose only non-secret log arguments to the model. The dashboard's server secret is never passed to the AI tool.
+For the Python client, configure only `TELEMETRY_DOMAIN` (`http://localhost:5173/`, with Vite proxying `/api` to port 5175) and `TELEMETRY_TOOL_KEY`. Register `start_ai_session_for_agent` at run start, followed by `fetch_session_logs_for_agent` and `write_session_log_for_agent`. The model sees only the created session ID/status, never the session secret. Supabase URL and keys stay exclusively on the management backend.
 
 ## Existing database warning
 

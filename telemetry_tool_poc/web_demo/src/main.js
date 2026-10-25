@@ -1,7 +1,7 @@
 import "../styles.css";
 
 const $ = (id) => document.getElementById(id);
-const state = { user: null, apiKey: null, sessionKey: null };
+const state = { user: null, apiKey: null };
 
 function notify(message, kind = "info") {
   const notice = $("notice");
@@ -29,7 +29,7 @@ async function api(path, options = {}) {
 function renderRows(container, rows, kind) {
   container.replaceChildren();
   if (!rows.length) {
-    container.textContent = kind === "key" ? "Henüz API key yok." : "Henüz AI oturumu yok.";
+    container.textContent = kind === "key" ? "Henüz API key yok." : "AI henüz bir session başlatmadı.";
     return;
   }
   for (const row of rows) {
@@ -71,20 +71,9 @@ async function createKey() {
   notify("API key oluşturuldu. Tam değer yalnızca şimdi gösteriliyor.", "success");
 }
 
-async function createSession() {
-  const result = await api("/api/sessions", { method: "POST", body: JSON.stringify({ name: $("session-name").value.trim() || "Debug session" }) });
-  state.sessionKey = result.secret;
-  $("new-session-secret").textContent = result.secret;
-  $("session-secret-panel").hidden = false;
-  await loadDashboard();
-  notify("AI session key oluşturuldu. AI runtime'a güvenli aktar.", "success");
-}
-
 $("google-login").addEventListener("click", () => { window.location.href = "/api/auth/google"; });
 $("create-api-key").addEventListener("click", () => createKey().catch((error) => notify(error.message, "error")));
-$("create-session").addEventListener("click", () => createSession().catch((error) => notify(error.message, "error")));
 $("copy-api-key").addEventListener("click", async () => { await navigator.clipboard.writeText(state.apiKey || $("new-secret").textContent); notify("API key panoya kopyalandı.", "success"); });
-$("copy-session-key").addEventListener("click", async () => { await navigator.clipboard.writeText(state.sessionKey || $("new-session-secret").textContent); notify("Session key panoya kopyalandı.", "success"); });
 $("sign-out").addEventListener("click", async () => {
   window.location.href = "/api/auth/logout";
 });

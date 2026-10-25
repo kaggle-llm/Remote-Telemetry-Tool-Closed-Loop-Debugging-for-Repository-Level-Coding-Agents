@@ -1,10 +1,13 @@
-"""Simulate an AI run writing a client-error log and reading it back."""
+"""Standalone AI-client simulation; config needs only domain and developer key."""
 
-import json
 import os
 from pathlib import Path
 
-from telemetry_tool_poc.telemetry_tool import fetch_session_logs_for_agent, write_session_log_for_agent
+from telemetry_tool_poc.telemetry_tool import (
+    fetch_session_logs_for_agent,
+    start_ai_session_for_agent,
+    write_session_log_for_agent,
+)
 
 
 def load_env_file():
@@ -21,12 +24,15 @@ def load_env_file():
 
 def main():
     load_env_file()
-    required = ("SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY", "TELEMETRY_TOOL_KEY", "TELEMETRY_SESSION_KEY")
-    missing = [name for name in required if not os.getenv(name)]
+    missing = [name for name in ("TELEMETRY_DOMAIN", "TELEMETRY_TOOL_KEY") if not os.getenv(name)]
     if missing:
         raise SystemExit("Missing AI client environment variables: " + ", ".join(missing))
 
-    write_result = write_session_log_for_agent(
+    # Start once per AI process/run. The generated session key stays in process memory.
+    session_info = start_ai_session_for_agent(name="highlight-palette-debug")
+    print("Started telemetry session:", session_info)
+
+    write_session_log_for_agent(
         level="error",
         event="highlight_palette_presentation_failed",
         detail={
@@ -36,12 +42,7 @@ def main():
             "source": "ai_client_demo",
         },
     )
-    print("Write result:")
-    print(json.dumps(json.loads(write_result), indent=2))
-
-    logs_result = fetch_session_logs_for_agent(limit=20)
-    print("Logs for this AI session:")
-    print(json.dumps(json.loads(logs_result), indent=2))
+    print(fetch_session_logs_for_agent(limit=20))
 
 
 if __name__ == "__main__":

@@ -46,21 +46,18 @@ npm run test:api
 ## Connect an AI run to Supabase
 
 1. Sign in to the dashboard with Google.
-2. Create an API key once; copy it immediately because the plaintext is not stored or shown again.
-3. Create a separate session key for the specific AI run; copy it immediately.
-4. If the API key from chat/source control/logs has been exposed, revoke it in the dashboard and create a replacement.
-5. Put these values in the AI runtime's secret manager/environment, not in model arguments, prompt text, source files, or committed `.env` files:
+2. Create a developer API key once; copy it immediately because the plaintext is not stored or shown again.
+3. Configure the AI client with only `TELEMETRY_DOMAIN` and `TELEMETRY_TOOL_KEY`.
+4. At the beginning of each AI run, call `start_ai_session`; the server creates the session key automatically and the tool keeps it private for subsequent log calls.
+5. If an API key from chat/source control/logs has been exposed, revoke it in the dashboard and create a replacement.
 
 ```powershell
-$env:TELEMETRY_MODE = "supabase"
-$env:SUPABASE_URL = "https://your-project.supabase.co"
-$env:SUPABASE_PUBLISHABLE_KEY = "sb_publishable_..."
+$env:TELEMETRY_DOMAIN = "http://localhost:5173/"
 $env:TELEMETRY_TOOL_KEY = "tlk_..."
-$env:TELEMETRY_SESSION_KEY = "tls_..."
-python telemetry_tool.py
+python -m ai_client_demo.main
 ```
 
-The tool calls `read_session_logs` and `write_session_log`; both credentials are validated and bound to one user/session inside Postgres. Register both tools in `agent.yaml`: `fetch_session_logs_for_agent` exposes only `limit`; `write_session_log_for_agent` exposes only `level`, `event`, and `detail`. Tool/session keys are injected from the runtime environment, never passed to the model. Never use or embed a Supabase secret/service-role key in the AI runtime or expose tool/session keys in output/logs. For a non-agent end-to-end test, follow `../ai_client_demo/README.md` from the project root.
+The management backend validates the developer key, generates a fresh AI session key, and only then accepts/returns logs for that session. Register the tools in `agent.yaml` in this order: `start_ai_session_for_agent`, then `write_session_log_for_agent` / `fetch_session_logs_for_agent`. The model sees a session ID and status, not the raw session key. The client gets no Supabase URL/key and must never use the server secret key. Vite proxies `http://localhost:5173/api` to the backend on port 5175.
 
 Required table columns: `id`, `user_id`, `session_id`, `level`, `event`, `detail`, `user_agent`, `created_at`.
 

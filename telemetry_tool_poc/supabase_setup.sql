@@ -51,6 +51,11 @@ create table if not exists public.ai_sessions (
   revoked_at timestamptz
 );
 
+alter table public.ai_sessions add column if not exists run_id text;
+update public.ai_sessions set run_id = encode(extensions.gen_random_bytes(16), 'hex') where run_id is null;
+alter table public.ai_sessions alter column run_id set not null;
+create unique index if not exists ai_sessions_user_run_idx on public.ai_sessions (user_id, run_id) where revoked_at is null;
+
 alter table public.client_logs add column if not exists ai_session_id uuid;
 alter table public.client_logs drop constraint if exists client_logs_user_id_fkey;
 alter table public.client_logs drop constraint if exists client_logs_ai_session_id_fkey;
@@ -121,3 +126,5 @@ revoke all on function public.read_session_logs(text, text, integer) from public
 revoke all on function public.write_session_log(text, text, text, text, jsonb) from public, anon, authenticated;
 grant execute on function public.read_session_logs(text, text, integer) to anon, authenticated;
 grant execute on function public.write_session_log(text, text, text, text, jsonb) to anon, authenticated;
+grant execute on function public.read_session_logs(text, text, integer) to service_role;
+grant execute on function public.write_session_log(text, text, text, text, jsonb) to service_role;
