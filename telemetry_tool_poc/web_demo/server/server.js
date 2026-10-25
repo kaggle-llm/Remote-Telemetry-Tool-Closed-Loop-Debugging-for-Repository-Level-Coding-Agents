@@ -169,22 +169,5 @@ app.post("/api/sessions/:id/revoke", sameOrigin, requireUser, async (req, res) =
   res.status(204).end();
 });
 
-app.post("/api/demo/log", sameOrigin, requireUser, async (req, res) => {
-  const { tool_key: toolKey, session_key: sessionKey } = req.body;
-  const { data, error } = await db.rpc("write_session_log", {
-    p_tool_key: toolKey, p_session_key: sessionKey, p_level: "error",
-    p_event: "highlight_palette_presentation_failed",
-    p_detail: { view: "HighlightPaletteView", action: "open_palette", failure_code: "missing_presentation_context", source: "web-prototype" },
-  });
-  if (error) return res.status(403).json({ error: "Keys invalid, revoked, or not paired." });
-  res.json(data);
-});
-
-app.post("/api/demo/logs", sameOrigin, requireUser, async (req, res) => {
-  const { data, error } = await db.rpc("read_session_logs", { p_tool_key: req.body.tool_key, p_session_key: req.body.session_key, p_limit: 50 });
-  if (error) return res.status(403).json({ error: "Keys invalid, revoked, or not paired." });
-  res.json(data);
-});
-
 app.use(express.static(new URL("../dist", import.meta.url).pathname));
 app.listen(Number(process.env.PORT || 5175), "0.0.0.0", () => console.log(`Telemetry API listening on ${process.env.PORT || 5175}`));

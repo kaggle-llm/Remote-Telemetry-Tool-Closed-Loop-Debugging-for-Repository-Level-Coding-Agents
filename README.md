@@ -38,7 +38,10 @@ This workspace contains an early-stage research prototype for the **Google - The
    - Research draft; it still needs implementation evidence, experiments, and references before submission.
 
 11. **`telemetry_tool_poc/web_demo/`**
-    - Vite dashboard prototype with Google OAuth and API key/session management.
+    - Management server: Google OAuth, app-owned account, tool key and AI session key creation/revocation. It does not run AI log tests.
+
+12. **`ai_client_demo/`**
+    - Separate AI-client project that writes a simulated client error and reads back logs scoped to its assigned session.
 
 ---
 

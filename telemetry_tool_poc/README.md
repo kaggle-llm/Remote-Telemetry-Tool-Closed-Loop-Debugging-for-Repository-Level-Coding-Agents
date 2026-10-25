@@ -4,7 +4,7 @@ This prototype provides Google OAuth through a custom Node backend (no Supabase 
 
 ## Browser demo
 
-`web_demo/` is the dashboard prototype. Google OAuth is performed by the Node backend; Supabase Auth is not used. The backend creates app sessions and owns the Supabase secret key. Dashboard actions manage one-time tool keys, per-run session keys, and scoped test logs.
+`web_demo/` is the management server. Google OAuth is performed by the Node backend; Supabase Auth is not used. The backend creates app sessions and owns the Supabase secret key. Dashboard actions only manage one-time tool keys and per-run session keys. Actual AI tool read/write tests live separately in the root `ai_client_demo/` project.
 
 Configure the backend environment as described in `SUPABASE_SCHEMA.md`, then run backend and Vite in separate terminals from `web_demo/`:
 
@@ -60,7 +60,7 @@ $env:TELEMETRY_SESSION_KEY = "tls_..."
 python telemetry_tool.py
 ```
 
-The tool calls `read_session_logs` and `write_session_log`; both credentials are validated and bound to one user/session inside Postgres. Register both tools in `agent.yaml`: `fetch_session_logs_for_agent` exposes only `limit`; `write_session_log_for_agent` exposes only `level`, `event`, and `detail`. Tool/session keys are injected from the runtime environment, never passed to the model. Never use or embed a Supabase secret/service-role key in the AI runtime or expose tool/session keys in output/logs.
+The tool calls `read_session_logs` and `write_session_log`; both credentials are validated and bound to one user/session inside Postgres. Register both tools in `agent.yaml`: `fetch_session_logs_for_agent` exposes only `limit`; `write_session_log_for_agent` exposes only `level`, `event`, and `detail`. Tool/session keys are injected from the runtime environment, never passed to the model. Never use or embed a Supabase secret/service-role key in the AI runtime or expose tool/session keys in output/logs. For a non-agent end-to-end test, follow `../ai_client_demo/README.md` from the project root.
 
 Required table columns: `id`, `user_id`, `session_id`, `level`, `event`, `detail`, `user_agent`, `created_at`.
 

@@ -152,6 +152,7 @@ def write_session_log_for_agent(level: str, event: str, detail: dict) -> str:
 
 
 if __name__ == "__main__":
-    demo_tool_key = os.getenv("TELEMETRY_TOOL_KEY", "")
-    demo_session_key = os.getenv("TELEMETRY_SESSION_KEY", "")
-    print(fetch_client_logs(tool_key=demo_tool_key, session_key=demo_session_key))
+    raise SystemExit(
+        "This module is an agent tool library. Run the separate ai_client_demo project "
+        "to test writing and reading session logs."
+    )

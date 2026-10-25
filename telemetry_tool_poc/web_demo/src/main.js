@@ -53,36 +53,6 @@ function renderRows(container, rows, kind) {
   }
 }
 
-function renderLogs(rows) {
-  const container = $("logs-list");
-  container.replaceChildren();
-  $("log-count").textContent = `${rows.length} kayıt`;
-  if (!rows.length) {
-    container.innerHTML = '<div class="empty-state"><p>Bu AI oturumunda henüz log yok.</p></div>';
-    return;
-  }
-  for (const row of rows) {
-    const card = document.createElement("article");
-    card.className = "log-card";
-    const level = document.createElement("span");
-    level.className = "level";
-    level.textContent = row.level;
-    const content = document.createElement("div");
-    const event = document.createElement("p");
-    event.className = "log-event";
-    event.textContent = row.event;
-    const detail = document.createElement("p");
-    detail.className = "log-detail";
-    detail.textContent = JSON.stringify(row.detail);
-    content.append(event, detail);
-    const time = document.createElement("time");
-    time.className = "log-time";
-    time.textContent = new Date(row.created_at).toLocaleString("tr-TR");
-    card.append(level, content, time);
-    container.append(card);
-  }
-}
-
 async function loadDashboard() {
   const [{ user }, keys, sessions] = await Promise.all([api("/api/me"), api("/api/keys"), api("/api/sessions")]);
   state.user = user;
@@ -110,22 +80,9 @@ async function createSession() {
   notify("AI session key oluşturuldu. AI runtime'a güvenli aktar.", "success");
 }
 
-async function writeDemoLog() {
-  const result = await api("/api/demo/log", { method: "POST", body: JSON.stringify({ tool_key: $("test-tool-key").value.trim(), session_key: $("session-key-filter").value.trim() }) });
-  notify(`Highlight hata logu yazıldı (id ${result.id}).`, "success");
-}
-
-async function loadLogs() {
-  const rows = await api("/api/demo/logs", { method: "POST", body: JSON.stringify({ tool_key: $("test-tool-key").value.trim(), session_key: $("session-key-filter").value.trim() }) });
-  renderLogs(rows);
-  notify(`${rows.length} session logu yüklendi.`, "success");
-}
-
 $("google-login").addEventListener("click", () => { window.location.href = "/api/auth/google"; });
 $("create-api-key").addEventListener("click", () => createKey().catch((error) => notify(error.message, "error")));
 $("create-session").addEventListener("click", () => createSession().catch((error) => notify(error.message, "error")));
-$("load-session-logs").addEventListener("click", () => loadLogs().catch((error) => notify(error.message, "error")));
-$("write-test-log").addEventListener("click", () => writeDemoLog().catch((error) => notify(error.message, "error")));
 $("copy-api-key").addEventListener("click", async () => { await navigator.clipboard.writeText(state.apiKey || $("new-secret").textContent); notify("API key panoya kopyalandı.", "success"); });
 $("copy-session-key").addEventListener("click", async () => { await navigator.clipboard.writeText(state.sessionKey || $("new-session-secret").textContent); notify("Session key panoya kopyalandı.", "success"); });
 $("sign-out").addEventListener("click", async () => {
