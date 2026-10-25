@@ -27,6 +27,12 @@ app.use((req, res, next) => {
   res.set("Cache-Control", "no-store");
   next();
 });
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/") && req.method !== "GET" && req.method !== "HEAD" && !req.get("origin")) {
+    return res.status(403).json({ error: "Origin header required." });
+  }
+  next();
+});
 
 function setSessionCookie(res, raw) {
   const encoded = Buffer.from(raw).toString("base64url");

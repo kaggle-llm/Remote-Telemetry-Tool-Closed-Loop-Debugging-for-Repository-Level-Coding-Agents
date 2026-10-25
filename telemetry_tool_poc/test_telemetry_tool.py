@@ -64,6 +64,18 @@ class TelemetryToolTests(unittest.TestCase):
         self.client_patch.start()
         self.assertEqual(client.url, "https://example.supabase.co")
 
+    def test_agent_wrappers_inject_credentials_and_do_not_expose_them_as_arguments(self):
+        with patch.dict("os.environ", {
+            "TELEMETRY_TOOL_KEY": TOOL_KEY,
+            "TELEMETRY_SESSION_KEY": SESSION_KEY,
+        }):
+            fetched = json.loads(telemetry_tool.fetch_session_logs_for_agent(limit=7))
+            written = json.loads(telemetry_tool.write_session_log_for_agent("warn", "agent_note", {"step": 2}))
+        self.assertEqual(fetched["count"], 1)
+        self.assertTrue(written["created"])
+        self.assertEqual(self.client.fetch_call, (TOOL_KEY, SESSION_KEY, 7))
+        self.assertEqual(self.client.write_call[0:4], (TOOL_KEY, SESSION_KEY, "warn", "agent_note"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,3 +1,12 @@
 {
-  "$schema": "https://app.kilo.ai/config.json"
+  "$schema": "https://app.kilo.ai/config.json",
+  "indexing": {
+    "enabled": true,
+    "provider": "openai-compatible",
+    "model": "all-MiniLM-L6-v2",
+    "dimension": 384,
+    "openai-compatible": {
+      "baseUrl": "http://localhost:8000/v1"
+    }
+  }
 }

@@ -84,8 +84,9 @@ def _redact(value):
 
 
 def _client_from_environment():
-    if os.getenv("TELEMETRY_MODE", "mock").lower() == "mock":
-        raise TelemetryError("Mock mode is test-only. Configure Supabase RPC credentials for tool use.")
+    mode = os.getenv("TELEMETRY_MODE", "supabase").lower()
+    if mode != "supabase":
+        raise TelemetryError("TELEMETRY_MODE must be 'supabase' for agent tool calls.")
     url = os.getenv("SUPABASE_URL")
     publishable_key = os.getenv("SUPABASE_PUBLISHABLE_KEY")
     if not all((url, publishable_key)):
@@ -97,10 +98,7 @@ def _client_from_environment():
 
 def fetch_client_logs(tool_key: str, session_key: str, limit: int = 20) -> str:
     """Fetch logs scoped to the owner and AI session proven by both generated keys."""
-    if not tool_key.startswith("tlk_") or len(tool_key) < 40:
-        raise ValueError("A valid tool key is required.")
-    if not session_key.startswith("tls_") or len(session_key) < 40:
-        raise ValueError("A valid session key is required.")
+    _validate_credentials(tool_key, session_key)
     if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= MAX_LIMIT:
         raise ValueError(f"limit must be an integer between 1 and {MAX_LIMIT}.")
     rows = _client_from_environment().fetch_logs(tool_key, session_key, limit)
@@ -110,10 +108,7 @@ def fetch_client_logs(tool_key: str, session_key: str, limit: int = 20) -> str:
 
 def write_client_log(tool_key: str, session_key: str, level: str, event: str, detail: dict) -> str:
     """Write one bounded telemetry event, linked server-side to the verified AI session."""
-    if not tool_key.startswith("tlk_") or len(tool_key) < 40:
-        raise ValueError("A valid tool key is required.")
-    if not session_key.startswith("tls_") or len(session_key) < 40:
-        raise ValueError("A valid session key is required.")
+    _validate_credentials(tool_key, session_key)
     if level not in ALLOWED_LEVELS:
         raise ValueError("level must be info, warn, or error.")
     if not isinstance(event, str) or not 1 <= len(event) <= 120:
@@ -122,6 +117,13 @@ def write_client_log(tool_key: str, session_key: str, level: str, event: str, de
         raise ValueError("detail must be an object no larger than 8000 characters.")
     result = _client_from_environment().write_log(tool_key, session_key, level, event, detail)
     return json.dumps(result, ensure_ascii=True)
+
+
+def _validate_credentials(tool_key: str, session_key: str) -> None:
+    if not isinstance(tool_key, str) or not tool_key.startswith("tlk_") or len(tool_key) < 40:
+        raise ValueError("A valid tool key is required.")
+    if not isinstance(session_key, str) or not session_key.startswith("tls_") or len(session_key) < 40:
+        raise ValueError("A valid session key is required.")
 
 
 def fetch_session_logs(tool_key: str, session_key: str, limit: int = 20) -> str:

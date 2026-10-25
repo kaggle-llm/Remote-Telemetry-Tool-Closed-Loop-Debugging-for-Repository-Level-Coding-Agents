@@ -31,14 +31,7 @@ Run `supabase_setup.sql` before using the dashboard. Configure Google OAuth redi
 
 ## Run the local Python tests
 
-From this directory:
-
-```powershell
-$env:TELEMETRY_MODE = "supabase"
-python telemetry_tool.py
-```
-
-Run tests:
+From `telemetry_tool_poc/`:
 
 ```powershell
 python -m unittest -v
@@ -50,9 +43,13 @@ Backend tests:
 npm run test:api
 ```
 
-## Optional live Supabase mode
+## Connect an AI run to Supabase
 
-Set credentials in the trusted agent host process/secret manager, not in a prompt:
+1. Sign in to the dashboard with Google.
+2. Create an API key once; copy it immediately because the plaintext is not stored or shown again.
+3. Create a separate session key for the specific AI run; copy it immediately.
+4. If the API key from chat/source control/logs has been exposed, revoke it in the dashboard and create a replacement.
+5. Put these values in the AI runtime's secret manager/environment, not in model arguments, prompt text, source files, or committed `.env` files:
 
 ```powershell
 $env:TELEMETRY_MODE = "supabase"
@@ -63,7 +60,7 @@ $env:TELEMETRY_SESSION_KEY = "tls_..."
 python telemetry_tool.py
 ```
 
-The tool calls `read_session_logs` and `write_session_log`; both credentials are validated and bound to one user/session inside Postgres. Register `telemetry_tool.fetch_session_logs_for_agent` with `limit` as the model argument; its credentials are injected from environment. For writes, register `telemetry_tool.write_session_log_for_agent` with only `level`, `event`, and `detail` as model arguments. Never use or embed a Supabase secret/service-role key in the client or expose tool/session keys to model-generated arguments or logs.
+The tool calls `read_session_logs` and `write_session_log`; both credentials are validated and bound to one user/session inside Postgres. Register both tools in `agent.yaml`: `fetch_session_logs_for_agent` exposes only `limit`; `write_session_log_for_agent` exposes only `level`, `event`, and `detail`. Tool/session keys are injected from the runtime environment, never passed to the model. Never use or embed a Supabase secret/service-role key in the AI runtime or expose tool/session keys in output/logs.
 
 Required table columns: `id`, `user_id`, `session_id`, `level`, `event`, `detail`, `user_agent`, `created_at`.
 
@@ -73,8 +70,7 @@ Required table columns: `id`, `user_id`, `session_id`, `level`, `event`, `detail
 
 ## Security work before production
 
-- Configure and test Supabase RLS policies for both client inserts and agent reads.
-- Prefer a trusted backend that derives the user scope from the authenticated session, rather than accepting a model-provided `user_id`.
+- The dashboard backend uses a server-side Supabase secret key, which bypasses RLS; keep it only in the backend secret store and enforce ownership checks in backend routes.
 - Define consent, retention/deletion, rate limits, abuse handling, and event redaction at ingestion.
 - Confirm the app-owned `public.users` table sync trigger and foreign keys match the project's identity model.
 - Add audit logging and integration tests using a non-production Supabase project before handling real user telemetry.

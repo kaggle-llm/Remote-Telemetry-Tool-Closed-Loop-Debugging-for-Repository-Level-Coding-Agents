@@ -13,3 +13,20 @@ tools:
           type: integer
           description: Maximum number of records to return (1-100).
       required: []
+
+  - name: write_session_log
+    description: Write a structured diagnostic event to this AI run's telemetry session. Do not include secrets, personal data, or raw user content. Runtime injects tool and session keys.
+    entrypoint: telemetry_tool.py:write_session_log_for_agent
+    parameters:
+      type: object
+      properties:
+        level:
+          type: string
+          enum: [info, warn, error]
+        event:
+          type: string
+          description: Short event identifier, maximum 120 characters.
+        detail:
+          type: object
+          description: Bounded structured diagnostic context; no credentials or personal data.
+      required: [level, event, detail]
