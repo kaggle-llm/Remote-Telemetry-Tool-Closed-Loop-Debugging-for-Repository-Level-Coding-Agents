@@ -1,7 +1,7 @@
 import "../styles.css";
 
 const $ = (id) => document.getElementById(id);
-const state = { user: null, apiKey: null };
+const state = { user: null, apiKey: null, ingestKey: null };
 
 function notify(message, kind = "info") {
   const notice = $("notice");
@@ -36,14 +36,16 @@ function renderRows(container, rows, kind) {
     const item = document.createElement("div");
     item.className = "key-row";
     const label = document.createElement("span");
-    label.textContent = `${row.name} · ${kind === "key" ? row.key_prefix : row.session_prefix}… · ${row.revoked_at ? "İptal edildi" : "Aktif"}`;
+    const prefix = kind === "key" ? row.key_prefix : kind === "ingest" ? row.key_prefix : row.session_prefix;
+    label.textContent = `${row.name} · ${prefix}… · ${row.revoked_at ? "İptal edildi" : "Aktif"}`;
     const revoke = document.createElement("button");
     revoke.className = "button button-light";
-    revoke.textContent = kind === "key" ? "İptal et" : "Kapat";
+    revoke.textContent = kind === "session" ? "Kapat" : "İptal et";
     revoke.disabled = Boolean(row.revoked_at);
     revoke.addEventListener("click", async () => {
       try {
-        await api(`/api/${kind === "key" ? "keys" : "sessions"}/${row.id}/revoke`, { method: "POST" });
+        const path = kind === "key" ? "keys" : kind === "ingest" ? "ingest-keys" : "sessions";
+        await api(`/api/${path}/${row.id}/revoke`, { method: "POST" });
         await loadDashboard();
         notify("Anahtar iptal edildi.", "success");
       } catch (error) { notify(error.message, "error"); }
@@ -54,11 +56,12 @@ function renderRows(container, rows, kind) {
 }
 
 async function loadDashboard() {
-  const [{ user }, keys, sessions] = await Promise.all([api("/api/me"), api("/api/keys"), api("/api/sessions")]);
+  const [{ user }, keys, ingestKeys, sessions] = await Promise.all([api("/api/me"), api("/api/keys"), api("/api/ingest-keys"), api("/api/sessions")]);
   state.user = user;
   $("account-email").textContent = user.display_name || user.email;
   showOnly("dashboard-view");
   renderRows($("api-keys"), keys, "key");
+  renderRows($("ingest-keys"), ingestKeys, "ingest");
   renderRows($("ai-sessions"), sessions, "session");
 }
 
@@ -71,9 +74,20 @@ async function createKey() {
   notify("API key oluşturuldu. Tam değer yalnızca şimdi gösteriliyor.", "success");
 }
 
+async function createIngestKey() {
+  const result = await api("/api/ingest-keys", { method: "POST", body: JSON.stringify({ name: $("ingest-key-name").value.trim() || "mbook client" }) });
+  state.ingestKey = result.secret;
+  $("new-ingest-secret").textContent = result.secret;
+  $("ingest-secret-panel").hidden = false;
+  await loadDashboard();
+  notify("Ingest key oluşturuldu. Yalnızca şimdi gösteriliyor.", "success");
+}
+
 $("google-login").addEventListener("click", () => { window.location.href = "/api/auth/google"; });
 $("create-api-key").addEventListener("click", () => createKey().catch((error) => notify(error.message, "error")));
+$("create-ingest-key").addEventListener("click", () => createIngestKey().catch((error) => notify(error.message, "error")));
 $("copy-api-key").addEventListener("click", async () => { await navigator.clipboard.writeText(state.apiKey || $("new-secret").textContent); notify("API key panoya kopyalandı.", "success"); });
+$("copy-ingest-key").addEventListener("click", async () => { await navigator.clipboard.writeText(state.ingestKey || $("new-ingest-secret").textContent); notify("Ingest key panoya kopyalandı.", "success"); });
 $("sign-out").addEventListener("click", async () => {
   window.location.href = "/api/auth/logout";
 });

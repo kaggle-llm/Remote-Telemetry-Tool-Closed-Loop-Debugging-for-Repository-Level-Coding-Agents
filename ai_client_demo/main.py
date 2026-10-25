@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 from telemetry_tool_poc.telemetry_tool import (
+    fetch_recent_client_logs_for_agent,
     fetch_session_logs_for_agent,
     start_ai_session_for_agent,
     write_session_log_for_agent,
@@ -43,6 +44,8 @@ def main():
         },
     )
     print(fetch_session_logs_for_agent(limit=20))
+    print("Recent mbook client logs:")
+    print(fetch_recent_client_logs_for_agent(limit=20))
 
 
 if __name__ == "__main__":

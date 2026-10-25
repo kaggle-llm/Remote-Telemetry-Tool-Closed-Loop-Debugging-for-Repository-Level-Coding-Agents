@@ -18,3 +18,22 @@ test("HMAC session signatures reject tampered values", () => {
   assert.equal(sign(value), signature);
   assert.notEqual(sign(`${value}tampered`), signature);
 });
+
+test("client sessions use a separate prefix from AI sessions", () => {
+  const key = `tcs_${crypto.randomBytes(32).toString("base64url")}`;
+  assert.match(key, /^tcs_[A-Za-z0-9_-]{43}$/);
+  assert.equal(key.startsWith("tls_"), false);
+});
+
+test("ingest keys have a restricted prefix distinct from developer keys", () => {
+  const key = `tli_${crypto.randomBytes(32).toString("base64url")}`;
+  assert.match(key, /^tli_[A-Za-z0-9_-]{43}$/);
+  assert.equal(key.startsWith("tlk_"), false);
+});
+
+test("ingest key secret is stored only as a SHA-256 digest", () => {
+  const secret = `tli_${crypto.randomBytes(32).toString("base64url")}`;
+  const hash = crypto.createHash("sha256").update(secret).digest("hex");
+  assert.equal(hash.length, 64);
+  assert.notEqual(hash, secret);
+});

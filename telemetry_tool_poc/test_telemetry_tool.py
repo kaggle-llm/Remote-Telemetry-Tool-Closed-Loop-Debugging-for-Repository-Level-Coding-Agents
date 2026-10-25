@@ -18,6 +18,10 @@ class MockClient:
         self.fetch_call = (session_key, limit)
         return [{"event": "palette_failed", "detail": {"email": "private@example.com"}}]
 
+    def fetch_recent_client_logs(self, limit, client_session_id=None):
+        self.client_fetch_call = (limit, client_session_id)
+        return [{"id": 4, "event": "highlight_palette_opened", "client_session_id": client_session_id}]
+
     def write_log(self, session_key, level, event, detail):
         self.write_call = (session_key, level, event, detail)
         return {"id": 5, "created": True}
@@ -69,6 +73,12 @@ class TelemetryToolTests(unittest.TestCase):
         for call in invalid:
             with self.subTest(call=call), self.assertRaises(ValueError):
                 call()
+
+    def test_recent_client_logs_can_be_filtered_by_client_session(self):
+        with patch.object(telemetry_tool, "_client_from_environment", return_value=self.client):
+            result = json.loads(telemetry_tool.fetch_recent_client_logs_for_agent(10, "client-session-id"))
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(self.client.client_fetch_call, (10, "client-session-id"))
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ const google = new OAuth2Client(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE
 const db = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SECRET_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const digest = (text) => crypto.createHash("sha256").update(text).digest("hex");
 const randomKey = (prefix) => `${prefix}_${crypto.randomBytes(32).toString("base64url")}`;
+const ingestRateLimits = new Map();
 const sign = (value) => crypto.createHmac("sha256", process.env.APP_SESSION_SECRET).update(value).digest("base64url");
 const validSignedValue = (value, signature) => {
   const expected = Buffer.from(sign(value));
@@ -135,6 +136,28 @@ app.get("/api/keys", requireUser, async (req, res) => {
   res.json(data);
 });
 
+app.get("/api/ingest-keys", requireUser, async (req, res) => {
+  const { data, error } = await db.from("telemetry_ingest_keys").select("id,name,key_prefix,revoked_at,created_at").eq("user_id", req.user.id).order("created_at", { ascending: false });
+  if (error) return res.status(500).json({ error: "Could not load ingest keys." });
+  res.json(data);
+});
+
+app.post("/api/ingest-keys", sameOrigin, requireUser, async (req, res) => {
+  const secret = randomKey("tli");
+  const name = String(req.body?.name || "mbook client").slice(0, 80);
+  const { data, error } = await db.from("telemetry_ingest_keys").insert({
+    user_id: req.user.id, name, key_hash: digest(secret), key_prefix: secret.slice(0, 12),
+  }).select("id,name,key_prefix,revoked_at,created_at").single();
+  if (error) return res.status(500).json({ error: "Could not create ingest key." });
+  res.status(201).json({ ...data, secret });
+});
+
+app.post("/api/ingest-keys/:id/revoke", sameOrigin, requireUser, async (req, res) => {
+  const { error } = await db.from("telemetry_ingest_keys").update({ revoked_at: new Date().toISOString() }).eq("id", req.params.id).eq("user_id", req.user.id);
+  if (error) return res.status(500).json({ error: "Could not revoke ingest key." });
+  res.status(204).end();
+});
+
 app.post("/api/keys", sameOrigin, requireUser, async (req, res) => {
   const secret = randomKey("tlk");
   const name = String(req.body.name || "AI tool key").slice(0, 80);
@@ -146,6 +169,31 @@ app.post("/api/keys", sameOrigin, requireUser, async (req, res) => {
 app.post("/api/keys/:id/revoke", sameOrigin, requireUser, async (req, res) => {
   const { error } = await db.from("tool_api_keys").update({ revoked_at: new Date().toISOString() }).eq("id", req.params.id).eq("user_id", req.user.id);
   if (error) return res.status(500).json({ error: "Could not revoke tool key." });
+  res.status(204).end();
+});
+
+app.get("/api/ingest-keys", requireUser, async (req, res) => {
+  const { data, error } = await db.from("telemetry_ingest_keys").select("id,name,key_prefix,revoked_at,created_at").eq("user_id", req.user.id).order("created_at", { ascending: false });
+  if (error) return res.status(500).json({ error: "Could not load ingest keys." });
+  res.json(data);
+});
+
+app.post("/api/ingest-keys", sameOrigin, requireUser, async (req, res) => {
+  const secret = randomKey("tli");
+  const name = String(req.body?.name || "mbook client").slice(0, 80);
+  const { data, error } = await db.from("telemetry_ingest_keys").insert({
+    user_id: req.user.id,
+    name,
+    key_hash: digest(secret),
+    key_prefix: secret.slice(0, 12),
+  }).select("id,name,key_prefix,revoked_at,created_at").single();
+  if (error) return res.status(500).json({ error: "Could not create ingest key." });
+  res.status(201).json({ ...data, secret });
+});
+
+app.post("/api/ingest-keys/:id/revoke", sameOrigin, requireUser, async (req, res) => {
+  const { error } = await db.from("telemetry_ingest_keys").update({ revoked_at: new Date().toISOString() }).eq("id", req.params.id).eq("user_id", req.user.id);
+  if (error) return res.status(500).json({ error: "Could not revoke ingest key." });
   res.status(204).end();
 });
 
@@ -185,7 +233,6 @@ app.post("/api/tool/sessions", sameOrigin, requireToolKey, async (req, res) => {
     session_hash: digest(sessionKey),
     session_prefix: sessionKey.slice(0, 12),
   }).select("id,name,session_prefix,created_at").single();
-  if (error?.code === "23505") return res.status(409).json({ error: "AI run ID already exists. Start a new process to create a distinct session." });
   if (error?.code === "23505") return res.status(409).json({ error: "Duplicate AI session identifier." });
   if (error) return res.status(500).json({ error: "Could not create AI session." });
   res.status(201).json({ id: data.id, name: data.name, session_prefix: data.session_prefix, created_at: data.created_at, session_key: sessionKey });
@@ -216,6 +263,108 @@ app.post("/api/tool/logs/write", sameOrigin, requireToolKey, async (req, res) =>
   });
   if (error) return res.status(403).json({ error: "Log rejected: invalid key/session pair or invalid event." });
   res.status(201).json(data);
+});
+
+async function requireIngestKey(req, res, next) {
+  const provided = /^Bearer (.+)$/.exec(req.get("authorization") || "")?.[1] || "";
+  if (!provided.startsWith("tli_")) return res.status(401).json({ error: "Invalid telemetry ingestion key." });
+  const { data, error } = await db.from("telemetry_ingest_keys").select("id,user_id").eq("key_hash", digest(provided)).is("revoked_at", null).maybeSingle();
+  if (error || !data) return res.status(401).json({ error: "Invalid or revoked telemetry ingestion key." });
+  req.ingestKey = provided;
+  req.ingestOwner = data;
+  next();
+}
+
+app.post("/api/client/sessions", sameOrigin, requireIngestKey, async (req, res) => {
+  const rateKey = `client-session:${req.ingestOwner.id}`;
+  const last = ingestRateLimits.get(rateKey) || 0;
+  if (Date.now() - last < 5000) return res.status(429).json({ error: "Please wait before creating another client session." });
+  ingestRateLimits.set(rateKey, Date.now());
+  const clientId = String(req.body?.client_id || "");
+  if (!/^[A-Za-z0-9._:-]{1,100}$/.test(clientId)) return res.status(400).json({ error: "Invalid client_id." });
+  if (!req.ingestOwner.user_id) return res.status(401).json({ error: "Ingest key has no associated account." });
+  const name = String(req.body?.name || "mbook client").slice(0, 80);
+  const existing = await db.from("client_sessions").select("id").eq("user_id", req.ingestOwner.user_id).eq("client_id", clientId).is("revoked_at", null).maybeSingle();
+  if (existing.error) return res.status(500).json({ error: "Could not load client session." });
+  if (existing.data) await db.from("client_sessions").update({ revoked_at: new Date().toISOString() }).eq("id", existing.data.id);
+  const sessionKey = randomKey("tcs");
+  const { data, error } = await db.from("client_sessions").insert({
+    user_id: req.ingestOwner.user_id, client_id: clientId, name,
+    session_hash: digest(sessionKey), session_prefix: sessionKey.slice(0, 12),
+  }).select("id,name,session_prefix,created_at").single();
+  if (error) return res.status(500).json({ error: "Could not create client session." });
+  res.status(201).json({ ...data, session_key: sessionKey });
+});
+
+app.post("/api/client/logs", sameOrigin, requireIngestKey, async (req, res) => {
+  const rateKey = `client-log:${req.ingestOwner.id}`;
+  const now = Date.now();
+  const state = ingestRateLimits.get(rateKey) || { windowStart: now, count: 0 };
+  if (now - state.windowStart > 60000) { state.windowStart = now; state.count = 0; }
+  if (state.count >= 120) return res.status(429).json({ error: "Client telemetry rate limit reached." });
+  state.count += 1;
+  ingestRateLimits.set(rateKey, state);
+  const { session_key: sessionKey, level, event, detail, user_agent: userAgent } = req.body || {};
+  if (typeof sessionKey !== "string" || !sessionKey.startsWith("tcs_")) return res.status(400).json({ error: "Client session key required." });
+  const { data, error } = await db.rpc("write_ingest_client_log", {
+    p_ingest_key: req.ingestKey,
+    p_client_session_key: sessionKey,
+    p_level: level,
+    p_event: event,
+    p_detail: detail,
+    p_user_agent: userAgent || null,
+  });
+  if (error) return res.status(403).json({ error: "Client log rejected: invalid key/session pair or invalid event." });
+  res.status(201).json(data);
+});
+
+app.post("/api/client/sessions/resolve", sameOrigin, requireToolKey, async (req, res) => {
+  const sessionKey = req.body?.session_key;
+  if (typeof sessionKey !== "string" || !sessionKey.startsWith("tcs_")) return res.status(400).json({ error: "Client session key required." });
+  const { data, error } = await db.from("client_sessions").select("id,name,session_prefix").eq("user_id", req.toolOwner.user_id).eq("session_hash", digest(sessionKey)).is("revoked_at", null).maybeSingle();
+  if (error || !data) return res.status(403).json({ error: "Invalid client session key." });
+  res.json({ id: data.id, name: data.name, session_prefix: data.session_prefix });
+});
+
+app.post("/api/client/logs", sameOrigin, requireToolKey, async (req, res) => {
+  const { session_key: sessionKey, level, event, detail, user_agent: userAgent } = req.body || {};
+  if (typeof sessionKey !== "string" || !sessionKey.startsWith("tcs_")) return res.status(400).json({ error: "Client session key required." });
+  const { data, error } = await db.rpc("write_client_session_log", {
+    p_tool_key: req.toolKey,
+    p_client_session_key: sessionKey,
+    p_level: level,
+    p_event: event,
+    p_detail: detail,
+    p_user_agent: userAgent || null,
+  });
+  if (error) return res.status(403).json({ error: "Client log rejected: invalid key/session pair or invalid event." });
+  res.status(201).json(data);
+});
+
+app.post("/api/tool/client-logs", sameOrigin, requireToolKey, async (req, res) => {
+  const { session_key: clientSessionKey, limit = 50 } = req.body || {};
+  if (typeof clientSessionKey !== "string" || !clientSessionKey.startsWith("tcs_")) return res.status(400).json({ error: "Client session key required." });
+  const { data, error } = await db.rpc("read_client_session_logs", {
+    p_tool_key: req.toolKey,
+    p_client_session_key: clientSessionKey,
+    p_limit: Number(limit),
+  });
+  if (error) return res.status(403).json({ error: "Client session is invalid, revoked, or does not belong to this developer key." });
+  res.json(data);
+});
+
+app.post("/api/tool/client-logs/recent", sameOrigin, requireToolKey, async (req, res) => {
+  const clientSessionId = req.body?.client_session_id;
+  const limit = Number(req.body?.limit ?? 50);
+  let query = db.from("client_logs").select("id,user_id,session_id,client_session_id,level,event,detail,user_agent,created_at").eq("user_id", req.toolOwner.user_id).not("client_session_id", "is", null).order("created_at", { ascending: false }).limit(Math.min(Math.max(limit, 1), 100));
+  if (clientSessionId) {
+    const { data: clientSession, error: sessionError } = await db.from("client_sessions").select("id").eq("id", clientSessionId).eq("user_id", req.toolOwner.user_id).is("revoked_at", null).maybeSingle();
+    if (sessionError || !clientSession) return res.status(404).json({ error: "Client session not found." });
+    query = query.eq("client_session_id", clientSession.id);
+  }
+  const { data, error } = await query;
+  if (error) return res.status(403).json({ error: "Could not read recent client logs." });
+  res.json(data);
 });
 
 app.use(express.static(new URL("../dist", import.meta.url).pathname));

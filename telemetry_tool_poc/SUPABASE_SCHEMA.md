@@ -30,9 +30,17 @@ SUPABASE_SECRET_KEY=<server-only-secret-key>
 
 ## AI key/session scope
 
-The dashboard generates high-entropy `tlk_...` developer keys. Each AI process calls `start_ai_session` using that developer key; the backend then generates a fresh `tls_...` session key. Only SHA-256 hashes/prefixes are persisted. The AI tool keeps the raw session key in process memory, while read/write requests send it with the developer key to the backend. The backend resolves the owner and enforces that the session belongs to that developer key; each log is linked to `ai_sessions.id`.
+The dashboard generates separate high-entropy `tlk_...` developer keys and `tli_...` ingest keys. Developer keys allow AI tools to create AI sessions and read logs. Ingest keys are restricted to creating client sessions and writing events; only SHA-256 hashes/prefixes are persisted. AI runs call `start_ai_session` using the developer key and receive a separate `tls_...` session held in tool process memory. Device sessions use their own `tcs_...` key. Every log is linked to either `ai_sessions.id` or `client_sessions.id`.
+
+The dashboard requires the `telemetry_ingest_keys` table and write-ingest RPC from the latest `supabase_setup.sql`; apply that SQL migration before creating ingest keys. Developer and ingest key secrets are displayed only once and can be revoked in the dashboard.
 
 For the Python client, configure only `TELEMETRY_DOMAIN` (`http://localhost:5173/`, with Vite proxying `/api` to port 5175) and `TELEMETRY_TOOL_KEY`. Register `start_ai_session_for_agent` at run start, followed by `fetch_session_logs_for_agent` and `write_session_log_for_agent`. The model sees only the created session ID/status, never the session secret. Supabase URL and keys stay exclusively on the management backend.
+
+## Real app/client telemetry
+
+The client starts its own `client_sessions` record through `/api/client/sessions`; this is separate from an AI run. App events are stored with `client_session_id`. The AI tool reads recent client events through `/api/tool/client-logs/recent`, optionally filtered by the client session UUID. AI and device sessions are therefore not conflated.
+
+For the current iOS/browser prototype, mbook uses Vite proxy `/api` to the management API. A signed-in user generates an ingest key in the dashboard and puts it in `VITE_TELEMETRY_INGEST_KEY` with `VITE_TELEMETRY_CLIENT_ID`. The server validates that key against `telemetry_ingest_keys`; the RPC derives the owner directly from the ingest key. The client never receives a developer key or Supabase credentials. Vite bundles the ingest key, so it remains extractable and must be treated as a restricted prototype credential, rotated if exposed, and rate-limited. For production, use per-install authentication and abuse controls.
 
 ## Existing database warning
 

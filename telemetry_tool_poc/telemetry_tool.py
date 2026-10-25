@@ -53,8 +53,17 @@ class TelemetryAPIClient:
     def create_session(self, name):
         return self.post("/api/tool/sessions", {"name": name})
 
+    def create_client_session(self, name, client_id):
+        return self.post("/api/client/sessions", {"name": name, "client_id": client_id})
+
     def fetch_logs(self, session_key, limit):
         rows = self.post("/api/tool/logs", {"session_key": session_key, "limit": limit})
+        if not isinstance(rows, list):
+            raise TelemetryError("Telemetry service returned an unexpected response.")
+        return rows
+
+    def fetch_recent_client_logs(self, limit, client_session_id=None):
+        rows = self.post("/api/tool/client-logs/recent", {"limit": limit, "client_session_id": client_session_id})
         if not isinstance(rows, list):
             raise TelemetryError("Telemetry service returned an unexpected response.")
         return rows
@@ -129,6 +138,20 @@ def start_ai_session(name: str = "AI run") -> str:
     return json.dumps({"session_id": session.get("id"), "session_name": session.get("name"), "status": "started"})
 
 
+def start_client_session(name: str = "mbook client") -> str:
+    """Register an app/client session with the developer key; return its secret once."""
+    if not isinstance(name, str) or not name.strip() or len(name) > 80:
+        raise ValueError("Client session name must be between 1 and 80 characters.")
+    client_id = os.getenv("TELEMETRY_CLIENT_ID", "").strip()
+    if not client_id or len(client_id) > 100:
+        raise TelemetryError("Set TELEMETRY_CLIENT_ID to a stable app/device identifier before creating a client session.")
+    session = _client_from_environment().create_client_session(name.strip(), client_id)
+    key = session.get("session_key") if isinstance(session, dict) else None
+    if not key or not key.startswith("tcs_"):
+        raise TelemetryError("Server did not return a client session key.")
+    return json.dumps({"client_session_id": session.get("id"), "client_session_key": key})
+
+
 def start_ai_session_for_agent(name: str = "AI run") -> str:
     """Agent-facing session creation; only the developer key is runtime-injected."""
     return start_ai_session(name=name)
@@ -140,6 +163,20 @@ def fetch_session_logs_for_agent(limit: int = 20) -> str:
     if not session_key:
         raise TelemetryError("Start an AI session before reading logs.")
     return fetch_client_logs(session_key=session_key, limit=limit)
+
+
+def fetch_recent_client_logs_for_agent(limit: int = 50, client_session_id: str = "") -> str:
+    """Fetch app/client events, optionally restricted to a client session ID."""
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= MAX_LIMIT:
+        raise ValueError(f"limit must be an integer between 1 and {MAX_LIMIT}.")
+    rows = _client_from_environment().fetch_recent_client_logs(limit, client_session_id or None)
+    safe_rows = [_redact(row) for row in rows]
+    return json.dumps({"count": len(safe_rows), "logs": safe_rows}, ensure_ascii=True)
+
+
+def diagnose_client_logs_for_agent(limit: int = 50, client_session_id: str = "") -> str:
+    """Read client telemetry and ask the model/runtime to diagnose from evidence."""
+    return fetch_recent_client_logs_for_agent(limit=limit, client_session_id=client_session_id)
 
 
 def write_session_log_for_agent(level: str, event: str, detail: dict) -> str:

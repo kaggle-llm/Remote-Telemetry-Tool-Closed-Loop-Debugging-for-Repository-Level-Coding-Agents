@@ -57,7 +57,7 @@ $env:TELEMETRY_TOOL_KEY = "tlk_..."
 python -m ai_client_demo.main
 ```
 
-The management backend validates the developer key, generates a fresh AI session key, and only then accepts/returns logs for that session. Register the tools in `agent.yaml` in this order: `start_ai_session_for_agent`, then `write_session_log_for_agent` / `fetch_session_logs_for_agent`. The model sees a session ID and status, not the raw session key. The client gets no Supabase URL/key and must never use the server secret key. Vite proxies `http://localhost:5173/api` to the backend on port 5175.
+The management dashboard separately creates developer keys (AI access) and restricted ingest keys (client session creation and log writes only). Device clients create separate client sessions and call `logEvent`; the AI reads them with `fetch_recent_client_logs_for_agent`. Vite proxies `http://localhost:5173/api` to the backend on port 5175. Never embed Supabase credentials or developer keys in a client. A Vite ingest key is public/extractable; revoke it after tests and use authenticated, rate-limited ingestion in production. Apply the latest `supabase_setup.sql` to create the ingest-key table/RPC before using the dashboard's new ingest-key controls.
 
 Required table columns: `id`, `user_id`, `session_id`, `level`, `event`, `detail`, `user_agent`, `created_at`.
 
