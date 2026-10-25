@@ -1,75 +1,68 @@
 import json
-import os
 import unittest
 from unittest.mock import patch
 
 import telemetry_tool
 
 
-USER_A = "00000000-0000-0000-0000-000000000001"
-USER_B = "00000000-0000-0000-0000-000000000002"
+TOOL_KEY = "tlk_" + "a" * 43
+SESSION_KEY = "tls_" + "b" * 43
 
 
-class FetchClientLogsTests(unittest.TestCase):
+class MockClient:
+    def fetch_logs(self, tool_key, session_key, limit):
+        self.fetch_call = (tool_key, session_key, limit)
+        return [{"event": "palette_failed", "detail": {"email": "private@example.com"}}]
+
+    def write_log(self, tool_key, session_key, level, event, detail):
+        self.write_call = (tool_key, session_key, level, event, detail)
+        return {"id": 5, "created": True}
+
+
+class TelemetryToolTests(unittest.TestCase):
     def setUp(self):
-        self.client = telemetry_tool.MockTelemetryClient([
-            {
-                "id": 1,
-                "user_id": USER_A,
-                "session_id": "session-a",
-                "level": "error",
-                "event": "palette_failed",
-                "detail": {"email": "private@example.com", "view": "Palette"},
-                "created_at": "2026-10-24T18:00:00+00:00",
-            },
-            {
-                "id": 2,
-                "user_id": USER_B,
-                "session_id": "session-b",
-                "level": "error",
-                "event": "other_user_event",
-                "detail": {},
-                "created_at": "2026-10-24T18:01:00+00:00",
-            },
-        ])
-        self.environment = patch.dict(os.environ, {"TELEMETRY_MODE": "mock"})
-        self.environment.start()
+        self.client = MockClient()
         self.client_patch = patch.object(telemetry_tool, "_client_from_environment", return_value=self.client)
         self.client_patch.start()
 
     def tearDown(self):
         self.client_patch.stop()
-        self.environment.stop()
 
-    def test_scopes_results_to_user_and_redacts_sensitive_detail(self):
-        result = json.loads(telemetry_tool.fetch_client_logs(user_id=USER_A))
+    def test_fetch_passes_scoped_keys_and_redacts(self):
+        result = json.loads(telemetry_tool.fetch_client_logs(TOOL_KEY, SESSION_KEY))
         self.assertEqual(result["count"], 1)
-        self.assertEqual(result["logs"][0]["event"], "palette_failed")
         self.assertEqual(result["logs"][0]["detail"]["email"], "[REDACTED]")
+        self.assertEqual(self.client.fetch_call, (TOOL_KEY, SESSION_KEY, 20))
 
-    def test_filters_session_and_level(self):
-        result = json.loads(telemetry_tool.fetch_client_logs(
-            user_id=USER_A, session_id="session-a", level="error"
+    def test_write_passes_validated_log(self):
+        result = json.loads(telemetry_tool.write_client_log(
+            TOOL_KEY, SESSION_KEY, "error", "palette_failed", {"view": "Palette"}
         ))
-        self.assertEqual(result["count"], 1)
-        empty = json.loads(telemetry_tool.fetch_client_logs(
-            user_id=USER_A, session_id="wrong-session"
-        ))
-        self.assertEqual(empty["count"], 0)
+        self.assertTrue(result["created"])
+        self.assertEqual(self.client.write_call[1:4], (SESSION_KEY, "error", "palette_failed"))
 
-    def test_rejects_out_of_range_or_invalid_parameters(self):
-        for kwargs in (
-            {"user_id": USER_A, "limit": 0},
-            {"user_id": USER_A, "limit": 101},
-            {"user_id": USER_A, "level": "debug"},
-            {"user_id": USER_A, "since_minutes": 20000},
-        ):
-            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
-                telemetry_tool.fetch_client_logs(**kwargs)
+    def test_rejects_invalid_keys_and_limits(self):
+        bad_calls = (
+            lambda: telemetry_tool.fetch_client_logs("bad", SESSION_KEY),
+            lambda: telemetry_tool.fetch_client_logs(TOOL_KEY, "bad"),
+            lambda: telemetry_tool.fetch_client_logs(TOOL_KEY, SESSION_KEY, 101),
+            lambda: telemetry_tool.write_client_log(TOOL_KEY, SESSION_KEY, "debug", "x", {}),
+            lambda: telemetry_tool.write_client_log(TOOL_KEY, SESSION_KEY, "error", "", {}),
+        )
+        for call in bad_calls:
+            with self.subTest(call=call), self.assertRaises(ValueError):
+                call()
 
-    def test_mock_client_is_user_scoped(self):
-        result = self.client.fetch_logs(USER_A, 20)
-        self.assertTrue(all(row["user_id"] == USER_A for row in result))
+    def test_rpc_uses_publishable_key_and_never_service_role(self):
+        client = telemetry_tool.SupabaseTelemetryClient("https://example.supabase.co", "sb_publishable_test")
+        self.client_patch.stop()
+        with patch.dict("os.environ", {"TELEMETRY_MODE": "supabase", "SUPABASE_URL": "https://example.supabase.co", "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_test"}):
+            with patch.object(telemetry_tool, "SupabaseTelemetryClient", return_value=client) as factory:
+                selected = telemetry_tool._client_from_environment()
+                factory.assert_called_once_with("https://example.supabase.co", "sb_publishable_test")
+                self.assertIs(selected, client)
+        self.client_patch.start()
+        self.assertEqual(client.url, "https://example.supabase.co")
 
 
 if __name__ == "__main__":

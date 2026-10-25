@@ -1,23 +1,67 @@
 import "../styles.css";
 
 const $ = (id) => document.getElementById(id);
-const DEMO_USER = "ios-demo-user";
-let logs = [];
+const state = { user: null, apiKey: null, sessionKey: null };
 
-function notify(message, type = "success") {
+function notify(message, kind = "info") {
   const notice = $("notice");
   notice.textContent = message;
-  notice.className = `notice visible ${type}`.trim();
+  notice.className = `notice visible ${kind}`;
 }
 
-function renderLogs() {
-  const list = $("logs-list");
-  $("log-count").textContent = `${logs.length} kayıt`;
-  if (!logs.length) {
-    list.innerHTML = '<div class="empty-state"><span class="empty-icon">⌁</span><p>Henüz gösterilecek olay yok.</p><span>Simülatörden bir test logu gönder.</span></div>';
+function showOnly(id) {
+  for (const name of ["login-view", "dashboard-view"]) $(name).hidden = name !== id;
+}
+
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    credentials: "same-origin",
+    ...options,
+    headers: { ...(options.body ? { "Content-Type": "application/json" } : {}), ...options.headers },
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || `Request failed (${response.status})`);
+  }
+  return response.status === 204 ? null : response.json();
+}
+
+function renderRows(container, rows, kind) {
+  container.replaceChildren();
+  if (!rows.length) {
+    container.textContent = kind === "key" ? "Henüz API key yok." : "Henüz AI oturumu yok.";
     return;
   }
-  list.replaceChildren(...logs.map((row) => {
+  for (const row of rows) {
+    const item = document.createElement("div");
+    item.className = "key-row";
+    const label = document.createElement("span");
+    label.textContent = `${row.name} · ${kind === "key" ? row.key_prefix : row.session_prefix}… · ${row.revoked_at ? "İptal edildi" : "Aktif"}`;
+    const revoke = document.createElement("button");
+    revoke.className = "button button-light";
+    revoke.textContent = kind === "key" ? "İptal et" : "Kapat";
+    revoke.disabled = Boolean(row.revoked_at);
+    revoke.addEventListener("click", async () => {
+      try {
+        await api(`/api/${kind === "key" ? "keys" : "sessions"}/${row.id}/revoke`, { method: "POST" });
+        await loadDashboard();
+        notify("Anahtar iptal edildi.", "success");
+      } catch (error) { notify(error.message, "error"); }
+    });
+    item.append(label, revoke);
+    container.append(item);
+  }
+}
+
+function renderLogs(rows) {
+  const container = $("logs-list");
+  container.replaceChildren();
+  $("log-count").textContent = `${rows.length} kayıt`;
+  if (!rows.length) {
+    container.innerHTML = '<div class="empty-state"><p>Bu AI oturumunda henüz log yok.</p></div>';
+    return;
+  }
+  for (const row of rows) {
     const card = document.createElement("article");
     card.className = "log-card";
     const level = document.createElement("span");
@@ -33,46 +77,62 @@ function renderLogs() {
     content.append(event, detail);
     const time = document.createElement("time");
     time.className = "log-time";
-    time.dateTime = row.created_at;
-    time.textContent = new Date(row.created_at).toLocaleTimeString("tr-TR");
+    time.textContent = new Date(row.created_at).toLocaleString("tr-TR");
     card.append(level, content, time);
-    return card;
-  }));
+    container.append(card);
+  }
 }
 
-$("simulate-button").addEventListener("click", () => {
-  $("palette").hidden = true;
-  $("simulator-message").textContent = "Palette presentation failed · event recorded";
-  $("simulator-message").className = "sim-message error";
-  logs.unshift({
-    id: crypto.randomUUID(),
-    user_id: DEMO_USER,
-    session_id: crypto.randomUUID().slice(0, 16),
-    level: "error",
-    event: "highlight_palette_presentation_failed",
-    detail: {
-      view: "HighlightPaletteView",
-      action: "open_palette",
-      failure_code: "missing_presentation_context",
-      app_version: "web-demo-0.1.0",
-      platform: navigator.userAgentData?.platform || navigator.platform || "unknown",
-    },
-    created_at: new Date().toISOString(),
-  });
-  renderLogs();
-  notify("Test telemetrisi yerel demo günlüğüne eklendi.");
+async function loadDashboard() {
+  const [{ user }, keys, sessions] = await Promise.all([api("/api/me"), api("/api/keys"), api("/api/sessions")]);
+  state.user = user;
+  $("account-email").textContent = user.display_name || user.email;
+  showOnly("dashboard-view");
+  renderRows($("api-keys"), keys, "key");
+  renderRows($("ai-sessions"), sessions, "session");
+}
+
+async function createKey() {
+  const result = await api("/api/keys", { method: "POST", body: JSON.stringify({ name: $("api-key-name").value.trim() || "Developer agent" }) });
+  state.apiKey = result.secret;
+  $("new-secret").textContent = result.secret;
+  $("secret-panel").hidden = false;
+  await loadDashboard();
+  notify("API key oluşturuldu. Tam değer yalnızca şimdi gösteriliyor.", "success");
+}
+
+async function createSession() {
+  const result = await api("/api/sessions", { method: "POST", body: JSON.stringify({ name: $("session-name").value.trim() || "Debug session" }) });
+  state.sessionKey = result.secret;
+  $("new-session-secret").textContent = result.secret;
+  $("session-secret-panel").hidden = false;
+  await loadDashboard();
+  notify("AI session key oluşturuldu. AI runtime'a güvenli aktar.", "success");
+}
+
+async function writeDemoLog() {
+  const result = await api("/api/demo/log", { method: "POST", body: JSON.stringify({ tool_key: $("test-tool-key").value.trim(), session_key: $("session-key-filter").value.trim() }) });
+  notify(`Highlight hata logu yazıldı (id ${result.id}).`, "success");
+}
+
+async function loadLogs() {
+  const rows = await api("/api/demo/logs", { method: "POST", body: JSON.stringify({ tool_key: $("test-tool-key").value.trim(), session_key: $("session-key-filter").value.trim() }) });
+  renderLogs(rows);
+  notify(`${rows.length} session logu yüklendi.`, "success");
+}
+
+$("google-login").addEventListener("click", () => { window.location.href = "/api/auth/google"; });
+$("create-api-key").addEventListener("click", () => createKey().catch((error) => notify(error.message, "error")));
+$("create-session").addEventListener("click", () => createSession().catch((error) => notify(error.message, "error")));
+$("load-session-logs").addEventListener("click", () => loadLogs().catch((error) => notify(error.message, "error")));
+$("write-test-log").addEventListener("click", () => writeDemoLog().catch((error) => notify(error.message, "error")));
+$("copy-api-key").addEventListener("click", async () => { await navigator.clipboard.writeText(state.apiKey || $("new-secret").textContent); notify("API key panoya kopyalandı.", "success"); });
+$("copy-session-key").addEventListener("click", async () => { await navigator.clipboard.writeText(state.sessionKey || $("new-session-secret").textContent); notify("Session key panoya kopyalandı.", "success"); });
+$("sign-out").addEventListener("click", async () => {
+  window.location.href = "/api/auth/logout";
 });
 
-$("refresh-button").addEventListener("click", () => {
-  logs = [];
-  renderLogs();
-  $("simulator-message").textContent = "Metni seçip highlight düğmesine bas.";
-  $("simulator-message").className = "sim-message";
-  notify("Demo günlüğü temizlendi.");
-});
-
-$("palette-trigger").addEventListener("click", () => {
-  $("palette").hidden = !$("palette").hidden;
-  $("simulator-message").textContent = $("palette").hidden ? "Metni seçip highlight düğmesine bas." : "Palet açıldı.";
-  $("simulator-message").className = "sim-message success";
+loadDashboard().catch((error) => {
+  if (error.message.includes("Sign in") || error.message.includes("Session") || error.message.includes("Invalid session")) showOnly("login-view");
+  else { showOnly("login-view"); notify(error.message, "error"); }
 });

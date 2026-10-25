@@ -2,9 +2,7 @@
 
 import json
 import os
-from datetime import datetime, timedelta, timezone
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 MAX_LIMIT = 100
@@ -17,69 +15,26 @@ class TelemetryError(RuntimeError):
     """Raised when telemetry configuration or retrieval fails safely."""
 
 
-class MockTelemetryClient:
-    def __init__(self, logs=None):
-        self.logs = logs or [{
-            "id": 1,
-            "user_id": "00000000-0000-0000-0000-000000000001",
-            "session_id": "demo-session",
-            "level": "error",
-            "event": "highlight_palette_presentation_failed",
-            "detail": {
-                "view": "HighlightPaletteView",
-                "action": "open_palette",
-                "failure_code": "missing_presentation_context",
-                "app_version": "1.2.0",
-                "os_version": "iOS 18",
-            },
-            "user_agent": "PaperTrack-demo",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }]
-
-    def fetch_logs(self, user_id, limit, session_id=None, level=None, since_minutes=1440):
-        cutoff = datetime.now(timezone.utc) - timedelta(minutes=since_minutes)
-        rows = []
-        for row in self.logs:
-            timestamp = datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
-            if row["user_id"] != user_id or timestamp < cutoff:
-                continue
-            if session_id and row["session_id"] != session_id:
-                continue
-            if level and row["level"] != level:
-                continue
-            rows.append(row)
-        return sorted(rows, key=lambda item: item["created_at"], reverse=True)[:limit]
-
-
 class SupabaseTelemetryClient:
-    """Uses the caller's user JWT so Supabase RLS remains authoritative."""
+    """Calls narrowly scoped RPCs; raw keys are never sent to the model output."""
 
-    def __init__(self, url, anon_key, access_token, timeout=10):
+    def __init__(self, url, publishable_key, timeout=10):
         self.url = url.rstrip("/")
-        self.anon_key = anon_key
-        self.access_token = access_token
+        self.publishable_key = publishable_key
         self.timeout = timeout
 
-    def fetch_logs(self, user_id, limit, session_id=None, level=None, since_minutes=1440):
-        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=since_minutes)).isoformat()
-        params = {
-            "select": "id,user_id,session_id,level,event,detail,user_agent,created_at",
-            "user_id": f"eq.{user_id}",
-            "created_at": f"gte.{cutoff}",
-            "order": "created_at.desc",
-            "limit": str(limit),
-        }
-        if session_id:
-            params["session_id"] = f"eq.{session_id}"
-        if level:
-            params["level"] = f"eq.{level}"
+    def rpc(self, name, payload):
+        body = json.dumps(payload).encode("utf-8")
         request = Request(
-            f"{self.url}/rest/v1/client_logs?{urlencode(params)}",
+            f"{self.url}/rest/v1/rpc/{name}",
+            data=body,
             headers={
-                "apikey": self.anon_key,
-                "Authorization": f"Bearer {self.access_token}",
+                "apikey": self.publishable_key,
+                "Authorization": f"Bearer {self.publishable_key}",
+                "Content-Type": "application/json",
                 "Accept": "application/json",
             },
+            method="POST",
         )
         try:
             with urlopen(request, timeout=self.timeout) as response:
@@ -93,9 +48,26 @@ class SupabaseTelemetryClient:
             rows = json.loads(payload)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise TelemetryError("Telemetry service returned invalid JSON.") from exc
+        return rows
+
+    def fetch_logs(self, tool_key, session_key, limit):
+        rows = self.rpc("read_session_logs", {
+            "p_tool_key": tool_key,
+            "p_session_key": session_key,
+            "p_limit": limit,
+        })
         if not isinstance(rows, list):
             raise TelemetryError("Telemetry service returned an unexpected response.")
         return rows
+
+    def write_log(self, tool_key, session_key, level, event, detail):
+        return self.rpc("write_session_log", {
+            "p_tool_key": tool_key,
+            "p_session_key": session_key,
+            "p_level": level,
+            "p_event": event,
+            "p_detail": detail,
+        })
 
 
 def _redact(value):
@@ -113,45 +85,71 @@ def _redact(value):
 
 def _client_from_environment():
     if os.getenv("TELEMETRY_MODE", "mock").lower() == "mock":
-        return MockTelemetryClient()
+        raise TelemetryError("Mock mode is test-only. Configure Supabase RPC credentials for tool use.")
     url = os.getenv("SUPABASE_URL")
-    anon_key = os.getenv("SUPABASE_ANON_KEY")
-    access_token = os.getenv("SUPABASE_ACCESS_TOKEN")
-    if not all((url, anon_key, access_token)):
-        raise TelemetryError(
-            "Live mode requires SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_ACCESS_TOKEN."
-        )
-    if "service_role" in access_token.lower():
-        raise TelemetryError("Service-role credentials are not accepted by this tool.")
-    return SupabaseTelemetryClient(url, anon_key, access_token)
+    publishable_key = os.getenv("SUPABASE_PUBLISHABLE_KEY")
+    if not all((url, publishable_key)):
+        raise TelemetryError("Live mode requires SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.")
+    if "service_role" in publishable_key.lower() or "secret" in publishable_key.lower():
+        raise TelemetryError("Only a Supabase publishable key may be used by this tool.")
+    return SupabaseTelemetryClient(url, publishable_key)
 
 
-def fetch_client_logs(
-    user_id: str,
-    limit: int = 20,
-    session_id: str = "",
-    level: str = "",
-    since_minutes: int = 1440,
-) -> str:
-    """Return recent logs within the caller's user scope; never accepts arbitrary SQL."""
-    if not user_id or len(user_id) > 64:
-        raise ValueError("A valid user_id is required.")
+def fetch_client_logs(tool_key: str, session_key: str, limit: int = 20) -> str:
+    """Fetch logs scoped to the owner and AI session proven by both generated keys."""
+    if not tool_key.startswith("tlk_") or len(tool_key) < 40:
+        raise ValueError("A valid tool key is required.")
+    if not session_key.startswith("tls_") or len(session_key) < 40:
+        raise ValueError("A valid session key is required.")
     if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= MAX_LIMIT:
         raise ValueError(f"limit must be an integer between 1 and {MAX_LIMIT}.")
-    if session_id and (len(session_id) > 64 or not session_id.strip()):
-        raise ValueError("session_id must be 1-64 characters when provided.")
-    if level and level not in ALLOWED_LEVELS:
-        raise ValueError("level must be info, warn, or error.")
-    if not isinstance(since_minutes, int) or isinstance(since_minutes, bool) or not 1 <= since_minutes <= 10080:
-        raise ValueError("since_minutes must be between 1 and 10080.")
-
-    rows = _client_from_environment().fetch_logs(
-        user_id, limit, session_id or None, level or None, since_minutes
-    )
+    rows = _client_from_environment().fetch_logs(tool_key, session_key, limit)
     safe_rows = [_redact(row) for row in rows]
     return json.dumps({"count": len(safe_rows), "logs": safe_rows}, ensure_ascii=True)
 
 
+def write_client_log(tool_key: str, session_key: str, level: str, event: str, detail: dict) -> str:
+    """Write one bounded telemetry event, linked server-side to the verified AI session."""
+    if not tool_key.startswith("tlk_") or len(tool_key) < 40:
+        raise ValueError("A valid tool key is required.")
+    if not session_key.startswith("tls_") or len(session_key) < 40:
+        raise ValueError("A valid session key is required.")
+    if level not in ALLOWED_LEVELS:
+        raise ValueError("level must be info, warn, or error.")
+    if not isinstance(event, str) or not 1 <= len(event) <= 120:
+        raise ValueError("event must be between 1 and 120 characters.")
+    if not isinstance(detail, dict) or len(json.dumps(detail)) > 8000:
+        raise ValueError("detail must be an object no larger than 8000 characters.")
+    result = _client_from_environment().write_log(tool_key, session_key, level, event, detail)
+    return json.dumps(result, ensure_ascii=True)
+
+
+def fetch_session_logs(tool_key: str, session_key: str, limit: int = 20) -> str:
+    """Fetch session-scoped logs; credentials are injected by the trusted runtime."""
+    if not tool_key or not session_key:
+        raise TelemetryError("Configure TELEMETRY_TOOL_KEY and TELEMETRY_SESSION_KEY in the trusted runtime.")
+    return fetch_client_logs(tool_key=tool_key, session_key=session_key, limit=limit)
+
+
+def fetch_session_logs_for_agent(limit: int = 20) -> str:
+    """Agent-facing wrapper: the model can choose the limit, never the credentials."""
+    return fetch_session_logs(
+        tool_key=os.getenv("TELEMETRY_TOOL_KEY", ""),
+        session_key=os.getenv("TELEMETRY_SESSION_KEY", ""),
+        limit=limit,
+    )
+
+
+def write_session_log_for_agent(level: str, event: str, detail: dict) -> str:
+    """Agent-facing writer with credentials injected from the runtime environment."""
+    tool_key = os.getenv("TELEMETRY_TOOL_KEY", "")
+    session_key = os.getenv("TELEMETRY_SESSION_KEY", "")
+    if not tool_key or not session_key:
+        raise TelemetryError("Configure TELEMETRY_TOOL_KEY and TELEMETRY_SESSION_KEY in the trusted runtime.")
+    return write_client_log(tool_key, session_key, level, event, detail)
+
+
 if __name__ == "__main__":
-    demo_user = os.getenv("TELEMETRY_DEMO_USER_ID", "00000000-0000-0000-0000-000000000001")
-    print(fetch_client_logs(user_id=demo_user))
+    demo_tool_key = os.getenv("TELEMETRY_TOOL_KEY", "")
+    demo_session_key = os.getenv("TELEMETRY_SESSION_KEY", "")
+    print(fetch_client_logs(tool_key=demo_tool_key, session_key=demo_session_key))

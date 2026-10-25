@@ -1,53 +1,33 @@
 <!doctype html>
 <html lang="tr">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light">
-  <title>Telemetry Lab | Client Log Demo</title>
-  <script type="module" src="/src/main.js"></script>
+  <title>Telemetry Lab | AI Session Logs</title>
 </head>
 <body>
   <main class="shell">
-    <header class="topbar">
-      <a class="wordmark" href="#top" aria-label="Telemetry Lab ana sayfa"><span class="mark">T</span> telemetry<span class="muted">/lab</span></a>
-      <div class="top-status"><span class="status-dot connected"></span><span>Sunum modu · yerel demo</span></div>
-    </header>
+    <header class="topbar"><a class="wordmark" href="#"><span class="mark">T</span> telemetry<span class="muted">/lab</span></a><div class="top-status"><span class="status-dot connected"></span><span>Secure session telemetry</span></div></header>
+    <section class="intro"><p class="eyebrow">AGENT DEVELOPER CONSOLE</p><h1>Her oturumun<br><em>kendi izi.</em></h1><p class="lede">Google ile giriş yap. Google kimliği backend'de doğrulanır; uygulama kullanıcısı kendi public.users tablomuzda tutulur. AI araç ve session key'leri üret.</p></section>
 
-    <section class="intro" id="top">
-      <p class="eyebrow">REMOTE CLIENT OBSERVABILITY · DEMO</p>
-      <h1>Uzak istemci.<br><em>Görünür hata.</em></h1>
-      <p class="lede">Highlight paleti açılmadığında istemciden yapılandırılmış telemetri gönder, oturum sahibinin loglarını incele.</p>
+    <section id="login-view" class="panel" hidden>
+      <div class="panel-heading"><div><p class="eyebrow">02 / IDENTITY</p><h2>Hesabına bağlan</h2></div></div>
+      <button id="google-login" class="button button-accent">Google ile giriş yap</button>
+      <p class="hint">Google OAuth uygulama backend’imiz tarafından doğrulanır; Supabase Auth kullanılmaz.</p>
     </section>
 
-    <section class="workspace">
-      <section class="panel auth-panel" aria-labelledby="auth-title">
-        <div class="panel-heading"><div><p class="eyebrow">01 / DEMO IDENTITY</p><h2 id="auth-title">Sunum kullanıcısı</h2></div><span class="step-number">A</span></div>
-        <p class="user-email">ios-demo-user</p>
-        <p class="hint">Sunum modu örnek kullanıcı kullanır. Hesap açma veya e-posta doğrulaması gerekmez.</p>
-      </section>
-
-      <section class="panel simulator" aria-labelledby="simulator-title">
-        <div class="panel-heading"><div><p class="eyebrow">02 / CLIENT EVENT</p><h2 id="simulator-title">Hata üret</h2></div><span class="step-number">B</span></div>
-        <div class="phone-card">
-          <div class="phone-head"><span class="phone-camera"></span><span>Note / Editor</span><span class="phone-signal">● ● ●</span></div>
-          <div class="selection-copy">“A system for remembering<br>what matters.”<span class="highlight"></span></div>
-          <div class="phone-toolbar"><span> Aa </span><span> B </span><span> I </span><button id="palette-trigger" aria-label="Highlight renk paletini aç">✦</button><span>···</span></div>
-          <div id="palette" class="palette" hidden><span class="swatch swatch-yellow"></span><span class="swatch swatch-pink"></span><span class="swatch swatch-blue"></span><span class="swatch swatch-green"></span><span class="palette-label">Highlight</span></div>
-          <p id="simulator-message" class="sim-message">Metni seçip highlight düğmesine bas.</p>
-        </div>
-        <button class="button button-accent full-button" id="simulate-button">Paleti açmayı dene ve logla</button>
-        <p class="hint">Tek tıkla örnek hata oluşturulur ve yerel demo günlüğüne eklenir.</p>
-      </section>
+    <section id="dashboard-view" hidden>
+      <section class="panel account-panel"><div><p class="eyebrow">AUTHENTICATED ACCOUNT</p><p id="account-email" class="user-email"></p></div><button id="sign-out" class="button button-light">Çıkış</button></section>
+      <div class="workspace">
+        <section class="panel"><div class="panel-heading"><div><p class="eyebrow">01 / TOOL CREDENTIAL</p><h2>AI araç anahtarı</h2></div></div><label>Anahtar adı<input id="api-key-name" value="Developer agent"></label><button id="create-api-key" class="button button-accent">API key oluştur</button><div id="api-keys" class="key-list"></div><div id="secret-panel" class="secret-panel" hidden><p>Bu değer yalnızca şimdi gösterilir. Güvenli sakla.</p><code id="new-secret"></code><button id="copy-api-key" class="button button-light">Kopyala</button></div></section>
+        <section class="panel"><div class="panel-heading"><div><p class="eyebrow">02 / AI RUN</p><h2>AI oturumu</h2></div></div><label>Oturum adı<input id="session-name" value="Debug session"></label><button id="create-session" class="button button-accent">Session key oluştur</button><div id="ai-sessions" class="key-list"></div><div id="session-secret-panel" class="secret-panel" hidden><p>Bu session key'i ilgili AI çalıştırmasına ver.</p><code id="new-session-secret"></code><button id="copy-session-key" class="button button-light">Kopyala</button></div></section>
+      </div>
+      <section class="panel logs-panel"><div class="panel-heading logs-heading"><div><p class="eyebrow">03 / SESSION LOGS</p><h2>AI session test araçları</h2></div></div><label>Tool API key<input id="test-tool-key" placeholder="tlk_..." autocomplete="off"></label><label>Session key<input id="session-key-filter" placeholder="tls_..." autocomplete="off"></label><button id="write-test-log" class="button button-accent">Highlight hatası logla</button><div class="divider"></div><button id="load-session-logs" class="button button-dark">Bu oturumun loglarını getir</button><div id="logs-list" class="logs-list"><div class="empty-state"><p>Session key üstte girildikten sonra logları görüntüle.</p></div></div><span id="log-count" hidden></span></section>
     </section>
-
-    <section class="panel logs-panel" aria-labelledby="logs-title">
-      <div class="panel-heading logs-heading"><div><p class="eyebrow">03 / TELEMETRY</p><h2 id="logs-title">İstemci olayları</h2></div><div class="log-actions"><span id="log-count" class="tag">0 kayıt</span><button class="button button-light" id="refresh-button">Temizle</button></div></div>
-      <div id="notice" class="notice" role="status" aria-live="polite">Sunum modu hazır. Test hatası oluşturmak için düğmeye bas.</div>
-      <div id="logs-list" class="logs-list"><div class="empty-state"><span class="empty-icon">⌁</span><p>Henüz gösterilecek olay yok.</p><span>Oturum açtıktan sonra simülatörden test logu gönder.</span></div></div>
-    </section>
-
-    <footer><span>TELEMETRY LAB · LOCAL PROTOTYPE</span><span>Auth → RLS → client_logs</span></footer>
+    <div id="notice" class="notice" role="status" aria-live="polite"></div>
+    <footer><span>TELEMETRY LAB · SECURITY-FIRST PROTOTYPE</span><span>Google OAuth → API key + session key → scoped logs</span></footer>
   </main>
+  <script type="module" src="/src/main.js"></script>
 </body>
 </html>
