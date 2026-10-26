@@ -1,7 +1,8 @@
-"""Bounded, user-scoped client telemetry retrieval for an agent tool."""
+"""Bounded, user-scoped client telemetry retrieval and HITL debugging loop for an agent tool."""
 
 import json
 import os
+import re
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin
 from urllib.request import Request, urlopen
@@ -10,6 +11,14 @@ MAX_LIMIT = 100
 MAX_RESPONSE_BYTES = 256_000
 ALLOWED_LEVELS = {"info", "warn", "error"}
 SENSITIVE_KEYS = {"email", "phone", "token", "password", "authorization", "access_token"}
+FREETEXT_KEYS = {"title", "user_report", "instructions", "report"}
+EMAIL_PATTERN = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
+LONG_NUMBER_PATTERN = re.compile(r"\b\d{9,}\b")
+CASE_STATES = (
+    "reported", "instrumenting", "awaiting_recheck", "rechecked",
+    "patch_ready", "approved", "rejected", "resolved", "abandoned",
+)
+MAX_PROBES = 20
 
 
 class TelemetryError(RuntimeError):
@@ -73,11 +82,48 @@ class TelemetryAPIClient:
             "session_key": session_key, "level": level, "event": event, "detail": detail,
         })
 
+    def list_cases(self, limit, state=None):
+        return self.post("/api/tool/cases", {"limit": limit, "state": state})
+
+    def fetch_case_logs(self, case_id, limit):
+        return self.post(f"/api/tool/cases/{case_id}/logs", {"limit": limit})
+
+    def instrument_case(self, case_id, instructions, probes):
+        return self.post(f"/api/tool/cases/{case_id}/instrument", {
+            "instructions": instructions, "probes": probes,
+        })
+
+    def await_recheck(self, case_id, instructions, probes):
+        return self.post(f"/api/tool/cases/{case_id}/await-recheck", {
+            "instructions": instructions, "probes": probes,
+        })
+
+    def finalize_case(self, case_id):
+        return self.post(f"/api/tool/cases/{case_id}/finalize", {})
+
+    def abandon_case(self, case_id):
+        return self.post(f"/api/tool/cases/{case_id}/abandon", {})
+
+    def cleanup_case(self, case_id):
+        return self.post(f"/api/tool/cases/{case_id}/cleanup", {})
+
+
+def _scrub_freetext(text):
+    text = EMAIL_PATTERN.sub("[REDACTED_EMAIL]", text)
+    text = LONG_NUMBER_PATTERN.sub("[REDACTED_NUMBER]", text)
+    return text[:4000]
+
 
 def _redact(value):
     if isinstance(value, dict):
         return {
-            key: ("[REDACTED]" if key.lower() in SENSITIVE_KEYS else _redact(item))
+            key: (
+                "[REDACTED]"
+                if key.lower() in SENSITIVE_KEYS
+                else _scrub_freetext(item)
+                if key.lower() in FREETEXT_KEYS and isinstance(item, str)
+                else _redact(item)
+            )
             for key, item in value.items()
         }
     if isinstance(value, list):
@@ -185,6 +231,111 @@ def write_session_log_for_agent(level: str, event: str, detail: dict) -> str:
     if not session_key:
         raise TelemetryError("Start an AI session before writing logs.")
     return write_client_log(session_key, level, event, detail)
+
+
+_UUID_PATTERN = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+
+
+def _validate_case_id(case_id: str) -> None:
+    if not isinstance(case_id, str) or not re.match(_UUID_PATTERN, case_id, re.IGNORECASE):
+        raise ValueError("A valid case id is required.")
+
+
+def _validate_limit(limit: int) -> None:
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= MAX_LIMIT:
+        raise ValueError(f"limit must be an integer between 1 and {MAX_LIMIT}.")
+
+
+def _validate_probes(probes: list) -> list:
+    if not isinstance(probes, list):
+        raise ValueError("probes must be an array.")
+    if len(probes) > MAX_PROBES:
+        raise ValueError(f"probes must contain at most {MAX_PROBES} entries.")
+    cleaned = []
+    for probe in probes:
+        if not isinstance(probe, dict):
+            raise ValueError("Each probe must be an object.")
+        probe_id = probe.get("probe_id")
+        target = probe.get("target")
+        level = probe.get("level", "warn")
+        if not isinstance(probe_id, str) or not 1 <= len(probe_id) <= 80:
+            raise ValueError("probe_id must be between 1 and 80 characters.")
+        if not isinstance(target, str) or not 1 <= len(target) <= 200:
+            raise ValueError("target must be between 1 and 200 characters.")
+        if level not in ALLOWED_LEVELS:
+            raise ValueError("probe level must be info, warn, or error.")
+        if "capture" not in probe or probe["capture"] is None:
+            capture = {}
+        elif not isinstance(probe["capture"], dict):
+            raise ValueError("probe capture must be an object.")
+        else:
+            capture = probe["capture"]
+        cleaned.append({"probe_id": probe_id, "target": target, "capture": capture, "level": level})
+    return cleaned
+
+
+def list_debug_cases_for_agent(limit: int = 50, state: str = "") -> str:
+    """List the debugging cases owned by this developer account."""
+    _validate_limit(limit)
+    if state and state not in CASE_STATES:
+        raise ValueError("state must be a known case state or empty.")
+    rows = _client_from_environment().list_cases(limit, state or None)
+    if not isinstance(rows, list):
+        raise TelemetryError("Telemetry service returned an unexpected response.")
+    safe_rows = [_redact(row) for row in rows]
+    return json.dumps({"count": len(safe_rows), "cases": safe_rows}, ensure_ascii=True)
+
+
+def fetch_case_logs_for_agent(case_id: str, limit: int = 50) -> str:
+    """Read only the telemetry captured for one debugging case."""
+    _validate_case_id(case_id)
+    _validate_limit(limit)
+    rows = _client_from_environment().fetch_case_logs(case_id, limit)
+    if not isinstance(rows, list):
+        raise TelemetryError("Telemetry service returned an unexpected response.")
+    safe_rows = [_redact(row) for row in rows]
+    return json.dumps({"count": len(safe_rows), "case_id": case_id, "logs": safe_rows}, ensure_ascii=True)
+
+
+def request_instrumentation_for_agent(case_id: str, instructions: str, probes: list) -> str:
+    """Publish runtime instrumentation probes and instructions for a case."""
+    _validate_case_id(case_id)
+    if not isinstance(instructions, str) or not 1 <= len(instructions) <= 8000:
+        raise ValueError("instructions must be between 1 and 8000 characters.")
+    cleaned = _validate_probes(probes)
+    result = _client_from_environment().instrument_case(case_id, instructions, cleaned)
+    return json.dumps(result, ensure_ascii=True)
+
+
+def await_user_recheck_for_agent(case_id: str, instructions: str, probes: list = None) -> str:
+    """Tell the user what to try next and wait for the device-side re-check report."""
+    _validate_case_id(case_id)
+    if not isinstance(instructions, str) or not 1 <= len(instructions) <= 8000:
+        raise ValueError("instructions must be between 1 and 8000 characters.")
+    cleaned = _validate_probes(probes or [])
+    result = _client_from_environment().await_recheck(case_id, instructions, cleaned)
+    return json.dumps(result, ensure_ascii=True)
+
+
+def finalize_case_for_agent(case_id: str) -> str:
+    """Mark a rechecked case as ready for the user to approve the fix."""
+    _validate_case_id(case_id)
+    result = _client_from_environment().finalize_case(case_id)
+    return json.dumps(result, ensure_ascii=True)
+
+
+def abandon_case_for_agent(case_id: str) -> str:
+    """Close a case without a resolution."""
+    _validate_case_id(case_id)
+    result = _client_from_environment().abandon_case(case_id)
+    return json.dumps(result, ensure_ascii=True)
+
+
+def cleanup_case_for_agent(case_id: str) -> str:
+    """Delete the telemetry captured for an approved case."""
+    _validate_case_id(case_id)
+    result = _client_from_environment().cleanup_case(case_id)
+    return json.dumps(result, ensure_ascii=True)
 
 
 if __name__ == "__main__":

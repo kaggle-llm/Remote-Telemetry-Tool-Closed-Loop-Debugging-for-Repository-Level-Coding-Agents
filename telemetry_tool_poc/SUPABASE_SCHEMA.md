@@ -45,3 +45,35 @@ An iOS/web client uses its same-origin `/api` route to the management API. A sig
 ## Existing database warning
 
 The setup file targets a new/custom-auth schema. If the existing `client_logs` table or user rows were created with a foreign key to `auth.users`, do not blindly rerun it: map existing users to Google `sub` values, migrate UUID references and existing logs first. Back up the database and test the migration on a staging project. Do not delete production data to make the schema apply.
+
+The migration is idempotent: new tables use `create table if not exists`, and columns that may already exist on `client_logs` (`client_session_id`, `ai_session_id`, `case_id`) use `alter table ... add column if not exists` **before** their foreign keys are added. On a database where `client_logs` already exists, the `create table` statement is a no-op, so those `alter table` statements are what introduce the new columns. Running `python telemetry_tool_poc/lint_schema.py` checks that ordering before you apply the migration.
+
+## Debugging loop (debug_cases and case_probes)
+
+`debug_cases` is the stateful record of one debugging attempt. It belongs to the developer account, is anchored to the `client_sessions` row of the device that reported the failure, and advances through a server-enforced state machine:
+
+```
+reported -> instrumenting -> awaiting_recheck -> rechecked -> patch_ready -> approved -> resolved
+                                  ^                    |              |
+                                  +---- rejected <-----+--------------+
+```
+
+`abandoned` is reachable from every non-terminal state. `case_probes` stores the runtime instrumentation probes attached to a case: `probe_id`, `target`, a bounded `capture` JSONB object, and a `level`. `client_logs.case_id` links captured telemetry to the case that requested it, so the agent can read one attempt's evidence without pulling the account's entire event history into context.
+
+The loop is driven by three key types, each with a different privilege:
+
+| Actor | Credential | Can do |
+|---|---|---|
+| Device client | `tli_` ingest key + `tcs_` client session key | create a case, read its own case state and probes, report a re-check result, approve or reject the fix, write telemetry for the case |
+| Coding agent | `tlk_` developer tool key | list cases, publish probes and instructions, read case-scoped logs, finalize, abandon, and purge logs **only after** approval |
+| Dashboard user | Google OAuth session cookie | manage keys, sessions, and inspect case state |
+
+Enforcement points:
+
+- `create_debug_case` requires both the ingest key and a client session key that belong to the same account.
+- `report_case_progress` only succeeds from `awaiting_recheck`, so a report cannot be injected before the agent asked for one.
+- `approve_case` only succeeds from `patch_ready`, so the agent cannot mark its own work approved.
+- `purge_case_logs` only succeeds from `approved`, so cleanup cannot run before user consent.
+- `write_ingest_client_log` verifies that the supplied `case_id` belongs to the calling client session; a device cannot write into another device's case.
+
+Cleanup deletes only the rows belonging to that case. The `debug_cases` row itself is retained as an audit trail, with the captured telemetry removed. If a research deployment needs the evidence preserved for analysis, anonymize the case into an archive rather than skipping the deletion entirely, and report the two conditions separately.

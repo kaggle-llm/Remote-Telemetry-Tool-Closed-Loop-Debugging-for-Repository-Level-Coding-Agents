@@ -7,6 +7,7 @@ import telemetry_tool
 
 
 SESSION_KEY = "tls_" + "b" * 43
+CASE_ID = "11111111-2222-3333-4444-555555555555"
 
 
 class MockClient:
@@ -25,6 +26,34 @@ class MockClient:
     def write_log(self, session_key, level, event, detail):
         self.write_call = (session_key, level, event, detail)
         return {"id": 5, "created": True}
+
+    def list_cases(self, limit, state=None):
+        self.list_cases_call = (limit, state)
+        return [{"id": CASE_ID, "state": "reported", "user_report": "palette does not open"}]
+
+    def fetch_case_logs(self, case_id, limit):
+        self.fetch_case_logs_call = (case_id, limit)
+        return [{"id": 9, "event": "palette_probe", "detail": {"password": "hunter2"}}]
+
+    def instrument_case(self, case_id, instructions, probes):
+        self.instrument_call = (case_id, instructions, probes)
+        return {"case_id": case_id, "state": "instrumenting", "updated": True}
+
+    def await_recheck(self, case_id, instructions, probes):
+        self.await_recheck_call = (case_id, instructions, probes)
+        return {"case_id": case_id, "state": "awaiting_recheck", "updated": True}
+
+    def finalize_case(self, case_id):
+        self.finalize_call = case_id
+        return {"case_id": case_id, "state": "patch_ready", "updated": True}
+
+    def abandon_case(self, case_id):
+        self.abandon_call = case_id
+        return {"case_id": case_id, "state": "abandoned", "updated": True}
+
+    def cleanup_case(self, case_id):
+        self.cleanup_call = case_id
+        return {"case_id": case_id, "state": "resolved", "deleted_logs": 3, "cleaned": True}
 
 
 class TelemetryToolTests(unittest.TestCase):
@@ -79,6 +108,73 @@ class TelemetryToolTests(unittest.TestCase):
             result = json.loads(telemetry_tool.fetch_recent_client_logs_for_agent(10, "client-session-id"))
         self.assertEqual(result["count"], 1)
         self.assertEqual(self.client.client_fetch_call, (10, "client-session-id"))
+
+
+class DebugCaseToolTests(unittest.TestCase):
+    def setUp(self):
+        self.client = MockClient()
+        self.client_patch = patch.object(telemetry_tool, "_client_from_environment", return_value=self.client)
+        self.client_patch.start()
+
+    def tearDown(self):
+        self.client_patch.stop()
+
+    def test_list_cases_forwards_limit_and_state_filter(self):
+        result = json.loads(telemetry_tool.list_debug_cases_for_agent(limit=10, state="reported"))
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["cases"][0]["id"], CASE_ID)
+        self.assertEqual(self.client.list_cases_call, (10, "reported"))
+
+    def test_case_logs_are_case_scoped_and_redacted(self):
+        result = json.loads(telemetry_tool.fetch_case_logs_for_agent(CASE_ID, limit=25))
+        self.assertEqual(self.client.fetch_case_logs_call, (CASE_ID, 25))
+        self.assertEqual(result["logs"][0]["detail"]["password"], "[REDACTED]")
+        self.assertEqual(result["case_id"], CASE_ID)
+
+    def test_instrumentation_publishes_probes_and_instructions(self):
+        probes = [{"probe_id": "p1", "target": "HighlightPaletteView.presentPalette", "capture": {"fields": ["state"]}}]
+        result = json.loads(telemetry_tool.request_instrumentation_for_agent(CASE_ID, "Try again.", probes))
+        self.assertEqual(result["state"], "instrumenting")
+        self.assertEqual(self.client.instrument_call[0], CASE_ID)
+        self.assertEqual(self.client.instrument_call[2][0]["level"], "warn")
+
+    def test_await_recheck_defaults_to_no_probes(self):
+        result = json.loads(telemetry_tool.await_user_recheck_for_agent(CASE_ID, "Please retry the highlight action."))
+        self.assertEqual(result["state"], "awaiting_recheck")
+        self.assertEqual(self.client.await_recheck_call[2], [])
+
+    def test_finalize_abandon_and_cleanup_drive_the_case_lifecycle(self):
+        self.assertEqual(json.loads(telemetry_tool.finalize_case_for_agent(CASE_ID))["state"], "patch_ready")
+        self.assertEqual(self.client.finalize_call, CASE_ID)
+        self.assertEqual(json.loads(telemetry_tool.abandon_case_for_agent(CASE_ID))["state"], "abandoned")
+        self.assertEqual(self.client.abandon_call, CASE_ID)
+        cleanup = json.loads(telemetry_tool.cleanup_case_for_agent(CASE_ID))
+        self.assertEqual(cleanup["state"], "resolved")
+        self.assertEqual(cleanup["deleted_logs"], 3)
+        self.assertEqual(self.client.cleanup_call, CASE_ID)
+
+    def test_case_tools_reject_invalid_identifiers_limits_and_probes(self):
+        invalid = (
+            lambda: telemetry_tool.fetch_case_logs_for_agent("not-a-uuid"),
+            lambda: telemetry_tool.fetch_case_logs_for_agent(CASE_ID, 0),
+            lambda: telemetry_tool.list_debug_cases_for_agent(101),
+            lambda: telemetry_tool.list_debug_cases_for_agent(10, "unknown_state"),
+            lambda: telemetry_tool.request_instrumentation_for_agent(CASE_ID, "", []),
+            lambda: telemetry_tool.request_instrumentation_for_agent(CASE_ID, "ok", [{"probe_id": "", "target": "t"}]),
+            lambda: telemetry_tool.request_instrumentation_for_agent(CASE_ID, "ok", [{"probe_id": "p", "target": "t", "level": "fatal"}]),
+            lambda: telemetry_tool.request_instrumentation_for_agent(CASE_ID, "ok", [{"probe_id": "p", "target": "t", "capture": []}]),
+            lambda: telemetry_tool.request_instrumentation_for_agent(CASE_ID, "ok", [{"probe_id": "p" * 81, "target": "t"}]),
+            lambda: telemetry_tool.request_instrumentation_for_agent(CASE_ID, "ok", ["not-an-object"]),
+        )
+        for call in invalid:
+            with self.subTest(call=call), self.assertRaises(ValueError):
+                call()
+
+    def test_free_text_reports_are_scrubbed_before_reaching_the_model(self):
+        rows = [{"user_report": "please check my account at user@example.com", "title": "t", "instructions": "retry"}]
+        scrubbed = telemetry_tool._redact(rows)
+        self.assertNotIn("user@example.com", scrubbed[0]["user_report"])
+        self.assertIn("[REDACTED_EMAIL]", scrubbed[0]["user_report"])
 
 
 if __name__ == "__main__":

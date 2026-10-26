@@ -4,6 +4,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import { OAuth2Client } from "google-auth-library";
 import { createClient } from "@supabase/supabase-js";
+import { CASE_STATES, MAX_PROBES, isUuid, redactDetail, redactRows, normalizeProbes } from "./case_rules.js";
 
 const required = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_CALLBACK_URL", "APP_SESSION_SECRET", "SUPABASE_URL", "SUPABASE_SECRET_KEY", "APP_ORIGIN"];
 for (const name of required) if (!process.env[name]) throw new Error(`Missing environment variable: ${name}`);
@@ -296,17 +297,19 @@ app.post("/api/client/logs", sameOrigin, requireIngestKey, async (req, res) => {
   if (state.count >= 120) return res.status(429).json({ error: "Client telemetry rate limit reached." });
   state.count += 1;
   ingestRateLimits.set(rateKey, state);
-  const { session_key: sessionKey, level, event, detail, user_agent: userAgent } = req.body || {};
+  const { session_key: sessionKey, level, event, detail, user_agent: userAgent, case_id: caseId } = req.body || {};
   if (typeof sessionKey !== "string" || !sessionKey.startsWith("tcs_")) return res.status(400).json({ error: "Client session key required." });
+  if (caseId !== undefined && caseId !== null && !isUuid(caseId)) return res.status(400).json({ error: "Invalid case_id." });
   const { data, error } = await db.rpc("write_ingest_client_log", {
     p_ingest_key: req.ingestKey,
     p_client_session_key: sessionKey,
     p_level: level,
     p_event: event,
-    p_detail: detail,
+    p_detail: detail ? redactDetail(detail) : detail,
     p_user_agent: userAgent || null,
+    p_case_id: caseId || null,
   });
-  if (error) return res.status(403).json({ error: "Client log rejected: invalid key/session pair or invalid event." });
+  if (error) return res.status(403).json({ error: "Client log rejected: invalid key/session pair, unknown case, or invalid event." });
   res.status(201).json(data);
 });
 
@@ -326,7 +329,7 @@ app.post("/api/client/logs", sameOrigin, requireToolKey, async (req, res) => {
     p_client_session_key: sessionKey,
     p_level: level,
     p_event: event,
-    p_detail: detail,
+    p_detail: detail ? redactDetail(detail) : detail,
     p_user_agent: userAgent || null,
   });
   if (error) return res.status(403).json({ error: "Client log rejected: invalid key/session pair or invalid event." });
@@ -356,6 +359,153 @@ app.post("/api/tool/client-logs/recent", sameOrigin, requireToolKey, async (req,
   }
   const { data, error } = await query;
   if (error) return res.status(403).json({ error: "Could not read recent client logs." });
+  res.json(data);
+});
+
+// ---------------------------------------------------------------- debug cases
+// Client-facing side of the loop: report a failure, poll for agent instructions,
+// report a re-check result, and approve or reject the proposed fix.
+
+app.post("/api/client/cases", sameOrigin, requireIngestKey, async (req, res) => {
+  const sessionKey = req.body?.session_key;
+  if (typeof sessionKey !== "string" || !sessionKey.startsWith("tcs_")) return res.status(400).json({ error: "Client session key required." });
+  const title = String(req.body?.title || "").trim();
+  const userReport = String(req.body?.user_report || "").trim();
+  if (!title || title.length > 120) return res.status(400).json({ error: "title must be 1-120 characters." });
+  if (!userReport || userReport.length > 4000) return res.status(400).json({ error: "user_report must be 1-4000 characters." });
+  const { data, error } = await db.rpc("create_debug_case", {
+    p_ingest_key: req.ingestKey,
+    p_client_session_key: sessionKey,
+    p_title: title,
+    p_user_report: userReport,
+  });
+  if (error) return res.status(403).json({ error: "Could not create the debug case: invalid key/session pair." });
+  res.status(201).json(data);
+});
+
+app.post("/api/client/cases/:id/state", sameOrigin, requireIngestKey, async (req, res) => {
+  const sessionKey = req.body?.session_key;
+  if (typeof sessionKey !== "string" || !sessionKey.startsWith("tcs_")) return res.status(400).json({ error: "Client session key required." });
+  if (!isUuid(req.params.id)) return res.status(400).json({ error: "Invalid case id." });
+  const { data, error } = await db.rpc("read_case_state", {
+    p_ingest_key: req.ingestKey,
+    p_client_session_key: sessionKey,
+    p_case_id: req.params.id,
+  });
+  if (error) return res.status(404).json({ error: "Case not found." });
+  const instructions = data.instructions ? String(data.instructions).slice(0, 4000) : null;
+  res.json({ ...data, instructions });
+});
+
+app.post("/api/client/cases/:id/report", sameOrigin, requireIngestKey, async (req, res) => {
+  const sessionKey = req.body?.session_key;
+  if (typeof sessionKey !== "string" || !sessionKey.startsWith("tcs_")) return res.status(400).json({ error: "Client session key required." });
+  if (!isUuid(req.params.id)) return res.status(400).json({ error: "Invalid case id." });
+  const report = String(req.body?.report || "").trim();
+  if (!report || report.length > 4000) return res.status(400).json({ error: "report must be 1-4000 characters." });
+  const { data, error } = await db.rpc("report_case_progress", {
+    p_ingest_key: req.ingestKey,
+    p_client_session_key: sessionKey,
+    p_case_id: req.params.id,
+    p_report: report,
+  });
+  if (error) {
+    if (error.code === "42501") return res.status(404).json({ error: "Case not found." });
+    return res.status(409).json({ error: "The case is not waiting for a re-check report." });
+  }
+  res.json(data);
+});
+
+app.post("/api/client/cases/:id/approve", sameOrigin, requireIngestKey, async (req, res) => {
+  const sessionKey = req.body?.session_key;
+  if (typeof sessionKey !== "string" || !sessionKey.startsWith("tcs_")) return res.status(400).json({ error: "Client session key required." });
+  if (!isUuid(req.params.id)) return res.status(400).json({ error: "Invalid case id." });
+  if (typeof req.body?.approved !== "boolean") return res.status(400).json({ error: "approved must be true or false." });
+  const { data, error } = await db.rpc("approve_case", {
+    p_ingest_key: req.ingestKey,
+    p_client_session_key: sessionKey,
+    p_case_id: req.params.id,
+    p_approved: req.body.approved,
+  });
+  if (error) {
+    if (error.code === "42501") return res.status(404).json({ error: "Case not found." });
+    return res.status(409).json({ error: "The case is not ready for approval." });
+  }
+  res.json(data);
+});
+
+// Agent-facing side of the loop: inspect cases, publish instrumentation probes
+// and instructions, finalize a fix, and clean up after approval.
+
+app.post("/api/tool/cases", sameOrigin, requireToolKey, async (req, res) => {
+  const limit = Math.min(Math.max(Number(req.body?.limit ?? 50), 1), 100);
+  const state = req.body?.state || null;
+  if (state !== null && !CASE_STATES.includes(state)) return res.status(400).json({ error: "Invalid case state." });
+  const { data, error } = await db.rpc("list_cases", { p_tool_key: req.toolKey, p_limit: limit, p_state: state });
+  if (error) return res.status(403).json({ error: "Could not list debug cases." });
+  res.json(data);
+});
+
+app.post("/api/tool/cases/:id/logs", sameOrigin, requireToolKey, async (req, res) => {
+  if (!isUuid(req.params.id)) return res.status(400).json({ error: "Invalid case id." });
+  const limit = Math.min(Math.max(Number(req.body?.limit ?? 50), 1), 100);
+  const { data, error } = await db.rpc("read_case_logs", { p_tool_key: req.toolKey, p_case_id: req.params.id, p_limit: limit });
+  if (error) return res.status(403).json({ error: "Case not found or does not belong to this developer key." });
+  res.json(redactRows(data || []));
+});
+
+app.post("/api/tool/cases/:id/instrument", sameOrigin, requireToolKey, async (req, res) => {
+  if (!isUuid(req.params.id)) return res.status(400).json({ error: "Invalid case id." });
+  const instructions = String(req.body?.instructions || "").trim();
+  if (!instructions || instructions.length > 8000) return res.status(400).json({ error: "instructions must be 1-8000 characters." });
+  const probes = normalizeProbes(req.body?.probes || []);
+  if (!probes) return res.status(400).json({ error: `probes must be an array of at most ${MAX_PROBES} valid probe objects.` });
+  const { data, error } = await db.rpc("set_case_instructions", {
+    p_tool_key: req.toolKey,
+    p_case_id: req.params.id,
+    p_instructions: instructions,
+    p_probes: probes,
+    p_next_state: "instrumenting",
+  });
+  if (error) return res.status(409).json({ error: "The case cannot be instrumented from its current state." });
+  res.json(data);
+});
+
+app.post("/api/tool/cases/:id/await-recheck", sameOrigin, requireToolKey, async (req, res) => {
+  if (!isUuid(req.params.id)) return res.status(400).json({ error: "Invalid case id." });
+  const instructions = String(req.body?.instructions || "").trim();
+  if (!instructions || instructions.length > 8000) return res.status(400).json({ error: "instructions must be 1-8000 characters." });
+  const probes = normalizeProbes(req.body?.probes || []);
+  if (!probes) return res.status(400).json({ error: `probes must be an array of at most ${MAX_PROBES} valid probe objects.` });
+  const { data, error } = await db.rpc("set_case_instructions", {
+    p_tool_key: req.toolKey,
+    p_case_id: req.params.id,
+    p_instructions: instructions,
+    p_probes: probes,
+    p_next_state: "awaiting_recheck",
+  });
+  if (error) return res.status(409).json({ error: "The case cannot request a re-check from its current state." });
+  res.json(data);
+});
+
+app.post("/api/tool/cases/:id/finalize", sameOrigin, requireToolKey, async (req, res) => {
+  if (!isUuid(req.params.id)) return res.status(400).json({ error: "Invalid case id." });
+  const { data, error } = await db.rpc("transition_case", { p_tool_key: req.toolKey, p_case_id: req.params.id, p_next_state: "patch_ready" });
+  if (error) return res.status(409).json({ error: "The case must be rechecked before a fix can be finalized." });
+  res.json(data);
+});
+
+app.post("/api/tool/cases/:id/abandon", sameOrigin, requireToolKey, async (req, res) => {
+  if (!isUuid(req.params.id)) return res.status(400).json({ error: "Invalid case id." });
+  const { data, error } = await db.rpc("transition_case", { p_tool_key: req.toolKey, p_case_id: req.params.id, p_next_state: "abandoned" });
+  if (error) return res.status(409).json({ error: "The case cannot be abandoned from its current state." });
+  res.json(data);
+});
+
+app.post("/api/tool/cases/:id/cleanup", sameOrigin, requireToolKey, async (req, res) => {
+  if (!isUuid(req.params.id)) return res.status(400).json({ error: "Invalid case id." });
+  const { data, error } = await db.rpc("purge_case_logs", { p_tool_key: req.toolKey, p_case_id: req.params.id });
+  if (error) return res.status(409).json({ error: "Only an approved case can be cleaned up." });
   res.json(data);
 });
 
