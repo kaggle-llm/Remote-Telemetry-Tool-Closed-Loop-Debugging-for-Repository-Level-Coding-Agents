@@ -44,7 +44,7 @@ def main():
         },
     )
     print(fetch_session_logs_for_agent(limit=20))
-    print("Recent mbook client logs:")
+    print("Recent app client logs:")
     print(fetch_recent_client_logs_for_agent(limit=20))
 
 

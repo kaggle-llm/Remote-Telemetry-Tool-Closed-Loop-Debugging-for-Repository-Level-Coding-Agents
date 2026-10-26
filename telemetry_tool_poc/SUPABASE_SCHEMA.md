@@ -18,7 +18,7 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SECRET_KEY=<server-only-secret-key>
 ```
 
-4. Start both the backend (`npm run dev:api`, port 5175) and Vite frontend (`npm run dev`, normally port 5173). Open the Vite origin (`APP_ORIGIN`), not the backend port; OAuth callback redirects there after login. The secret key is **server-only**; never put it in Vite `VITE_*` values, browser code, the mobile app, or an AI prompt. Production must use HTTPS and a managed secret store.
+4. Start both the backend (`npm run dev:api`, port 5175) and Vite frontend (`npm run dev`, normally port 5173). Open the Vite origin (`APP_ORIGIN`), not the backend port; OAuth callback redirects there after login. The secret key is **server-only**; never put it in Vite `VITE_*` values, browser code, a client app, or an AI prompt. Production must use HTTPS and a managed secret store.
 
 ## Identity and session model
 
@@ -40,7 +40,7 @@ For the Python client, configure only `TELEMETRY_DOMAIN` (`http://localhost:5173
 
 The client starts its own `client_sessions` record through `/api/client/sessions`; this is separate from an AI run. App events are stored with `client_session_id`. The AI tool reads recent client events through `/api/tool/client-logs/recent`, optionally filtered by the client session UUID. AI and device sessions are therefore not conflated.
 
-For the current iOS/browser prototype, mbook uses Vite proxy `/api` to the management API. A signed-in user generates an ingest key in the dashboard and puts it in `VITE_TELEMETRY_INGEST_KEY` with `VITE_TELEMETRY_CLIENT_ID`. The server validates that key against `telemetry_ingest_keys`; the RPC derives the owner directly from the ingest key. The client never receives a developer key or Supabase credentials. Vite bundles the ingest key, so it remains extractable and must be treated as a restricted prototype credential, rotated if exposed, and rate-limited. For production, use per-install authentication and abuse controls.
+An iOS/web client uses its same-origin `/api` route to the management API. A signed-in user generates an ingest key in the dashboard and configures it as `VITE_TELEMETRY_INGEST_KEY` with a stable `VITE_TELEMETRY_CLIENT_ID`. The server validates that key against `telemetry_ingest_keys`; the RPC derives the owner directly from the ingest key. The client never receives a developer key or Supabase credentials. Frontend environment keys are extractable, so ingest keys are restricted, revocable credentials; rate-limit them and avoid treating them as secrets. For production, use per-install authentication and abuse controls.
 
 ## Existing database warning
 

@@ -138,7 +138,7 @@ def start_ai_session(name: str = "AI run") -> str:
     return json.dumps({"session_id": session.get("id"), "session_name": session.get("name"), "status": "started"})
 
 
-def start_client_session(name: str = "mbook client") -> str:
+def start_client_session(name: str = "client app") -> str:
     """Register an app/client session with the developer key; return its secret once."""
     if not isinstance(name, str) or not name.strip() or len(name) > 80:
         raise ValueError("Client session name must be between 1 and 80 characters.")

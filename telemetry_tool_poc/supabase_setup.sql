@@ -44,7 +44,7 @@ create table if not exists public.tool_api_keys (
 create table if not exists public.telemetry_ingest_keys (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.users(id) on delete cascade,
-  name text not null default 'mbook client' check (length(name) between 1 and 80),
+  name text not null default 'client app' check (length(name) between 1 and 80),
   key_hash text not null unique check (length(key_hash) = 64),
   key_prefix text not null check (length(key_prefix) between 1 and 16),
   created_at timestamptz not null default now(),
@@ -108,7 +108,7 @@ alter table public.telemetry_ingest_keys enable row level security;
 alter table public.ai_sessions enable row level security;
 alter table public.client_sessions enable row level security;
 alter table public.client_logs enable row level security;
-alter table public.telemetry_ingest_keys add column if not exists name text not null default 'mbook client';
+alter table public.telemetry_ingest_keys add column if not exists name text not null default 'client app';
 alter table public.telemetry_ingest_keys add column if not exists key_prefix text not null default 'tli_legacy';
 alter table public.telemetry_ingest_keys add column if not exists created_at timestamptz not null default now();
 alter table public.telemetry_ingest_keys add column if not exists revoked_at timestamptz;

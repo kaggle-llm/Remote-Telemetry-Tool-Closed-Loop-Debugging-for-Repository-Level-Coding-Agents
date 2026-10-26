@@ -2,9 +2,9 @@
 
 ## Generate prototype keys
 
-Run `python ai_client_demo/generate_keys.py` from the repository root only if you need a new `APP_SESSION_SECRET`. Ingest keys are user-owned and generated in the management dashboard; they are not global backend environment variables. The server's existing `TELEMETRY_TOOL_KEY` stays server-side for AI tool sessions and must never be copied into mbook.
+Run `python ai_client_demo/generate_keys.py` from the repository root only if you need a new `APP_SESSION_SECRET`. Ingest keys are user-owned and generated in the management dashboard; they are not global backend environment variables. The server's existing `TELEMETRY_TOOL_KEY` stays server-side for AI tool sessions and must never be copied into a client app.
 
-In the web dashboard, create a **user-owned ingest key** (not a developer key), then set it as `VITE_TELEMETRY_INGEST_KEY` in the mbook web build environment. Set `VITE_TELEMETRY_CLIENT_ID=mbook-ios-reader`. Vite embeds `VITE_*` values in browser assets, so users can extract this key. It is restricted to client-session creation and log insertion; it cannot read logs or manage keys. Revoke it after testing if exposed. Do not treat it as a production secret.
+In the web dashboard, create a **user-owned ingest key** (not a developer key), then set it as `VITE_TELEMETRY_INGEST_KEY` in the client app environment. Set a stable `VITE_TELEMETRY_CLIENT_ID` for that app/device installation. Vite embeds `VITE_*` values in browser assets, so users can extract this key. It is restricted to client-session creation and log insertion; it cannot read logs or manage keys. Revoke it after testing if exposed. Do not treat it as a production secret.
 
 This is a separate example project representing the AI agent/runtime. Its `.env` contains only the management API domain and developer tool key. At the beginning of each process/run, the AI tool calls `start_ai_session`; the server creates a fresh session and the tool keeps the session secret in process memory. The AI then writes a simulated iOS highlight-palette error and fetches logs for that session. Supabase URL/keys and session keys are not configured in this client project. The current launcher starts one session per process; keep the same process alive for one AI run.
 

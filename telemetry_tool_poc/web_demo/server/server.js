@@ -136,28 +136,6 @@ app.get("/api/keys", requireUser, async (req, res) => {
   res.json(data);
 });
 
-app.get("/api/ingest-keys", requireUser, async (req, res) => {
-  const { data, error } = await db.from("telemetry_ingest_keys").select("id,name,key_prefix,revoked_at,created_at").eq("user_id", req.user.id).order("created_at", { ascending: false });
-  if (error) return res.status(500).json({ error: "Could not load ingest keys." });
-  res.json(data);
-});
-
-app.post("/api/ingest-keys", sameOrigin, requireUser, async (req, res) => {
-  const secret = randomKey("tli");
-  const name = String(req.body?.name || "mbook client").slice(0, 80);
-  const { data, error } = await db.from("telemetry_ingest_keys").insert({
-    user_id: req.user.id, name, key_hash: digest(secret), key_prefix: secret.slice(0, 12),
-  }).select("id,name,key_prefix,revoked_at,created_at").single();
-  if (error) return res.status(500).json({ error: "Could not create ingest key." });
-  res.status(201).json({ ...data, secret });
-});
-
-app.post("/api/ingest-keys/:id/revoke", sameOrigin, requireUser, async (req, res) => {
-  const { error } = await db.from("telemetry_ingest_keys").update({ revoked_at: new Date().toISOString() }).eq("id", req.params.id).eq("user_id", req.user.id);
-  if (error) return res.status(500).json({ error: "Could not revoke ingest key." });
-  res.status(204).end();
-});
-
 app.post("/api/keys", sameOrigin, requireUser, async (req, res) => {
   const secret = randomKey("tlk");
   const name = String(req.body.name || "AI tool key").slice(0, 80);
@@ -174,20 +152,34 @@ app.post("/api/keys/:id/revoke", sameOrigin, requireUser, async (req, res) => {
 
 app.get("/api/ingest-keys", requireUser, async (req, res) => {
   const { data, error } = await db.from("telemetry_ingest_keys").select("id,name,key_prefix,revoked_at,created_at").eq("user_id", req.user.id).order("created_at", { ascending: false });
-  if (error) return res.status(500).json({ error: "Could not load ingest keys." });
+  if (error) {
+    console.error("Ingest key list failed:", error.code || "unknown");
+    const missingSchema = error.code === "42P01" || error.code === "PGRST205";
+    return res.status(500).json({
+      error: missingSchema ? "Ingest-key database migration is missing. Apply the latest supabase_setup.sql." : "Could not load ingest keys.",
+      code: error.code || "unknown",
+    });
+  }
   res.json(data);
 });
 
 app.post("/api/ingest-keys", sameOrigin, requireUser, async (req, res) => {
   const secret = randomKey("tli");
-  const name = String(req.body?.name || "mbook client").slice(0, 80);
+  const name = String(req.body?.name || "client app").slice(0, 80);
   const { data, error } = await db.from("telemetry_ingest_keys").insert({
     user_id: req.user.id,
     name,
     key_hash: digest(secret),
     key_prefix: secret.slice(0, 12),
   }).select("id,name,key_prefix,revoked_at,created_at").single();
-  if (error) return res.status(500).json({ error: "Could not create ingest key." });
+  if (error) {
+    console.error("Ingest key creation failed:", error.code || "unknown");
+    const missingSchema = error.code === "42P01" || error.code === "PGRST205";
+    return res.status(500).json({
+      error: missingSchema ? "Ingest-key database migration is missing. Apply the latest supabase_setup.sql." : "Could not create ingest key.",
+      code: error.code || "unknown",
+    });
+  }
   res.status(201).json({ ...data, secret });
 });
 
@@ -283,7 +275,7 @@ app.post("/api/client/sessions", sameOrigin, requireIngestKey, async (req, res) 
   const clientId = String(req.body?.client_id || "");
   if (!/^[A-Za-z0-9._:-]{1,100}$/.test(clientId)) return res.status(400).json({ error: "Invalid client_id." });
   if (!req.ingestOwner.user_id) return res.status(401).json({ error: "Ingest key has no associated account." });
-  const name = String(req.body?.name || "mbook client").slice(0, 80);
+  const name = String(req.body?.name || "client app").slice(0, 80);
   const existing = await db.from("client_sessions").select("id").eq("user_id", req.ingestOwner.user_id).eq("client_id", clientId).is("revoked_at", null).maybeSingle();
   if (existing.error) return res.status(500).json({ error: "Could not load client session." });
   if (existing.data) await db.from("client_sessions").update({ revoked_at: new Date().toISOString() }).eq("id", existing.data.id);

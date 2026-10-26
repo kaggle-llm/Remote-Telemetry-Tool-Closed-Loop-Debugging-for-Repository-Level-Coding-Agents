@@ -21,6 +21,9 @@ async function api(path, options = {}) {
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
+    if (response.status === 500 && payload.code === "42P01") {
+      payload.error = "Supabase tablosu eksik. En güncel supabase_setup.sql dosyasını Supabase SQL Editor'da çalıştırıp yeniden dene.";
+    }
     throw new Error(payload.error || `Request failed (${response.status})`);
   }
   return response.status === 204 ? null : response.json();
@@ -75,7 +78,7 @@ async function createKey() {
 }
 
 async function createIngestKey() {
-  const result = await api("/api/ingest-keys", { method: "POST", body: JSON.stringify({ name: $("ingest-key-name").value.trim() || "mbook client" }) });
+  const result = await api("/api/ingest-keys", { method: "POST", body: JSON.stringify({ name: $("ingest-key-name").value.trim() || "iOS reader client" }) });
   state.ingestKey = result.secret;
   $("new-ingest-secret").textContent = result.secret;
   $("ingest-secret-panel").hidden = false;
