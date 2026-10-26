@@ -354,15 +354,14 @@ begin
   update public.debug_cases set instructions = p_instructions, state = p_next_state, version = version + 1, updated_at = now(), state_changed_at = now() where id = p_case_id;
   -- Upsert probes
   delete from public.case_probes where case_id = p_case_id;
-  for v_probe in select * from jsonb_array_elements(p_probes) loop
-    insert into public.case_probes (case_id, probe_id, target, capture, level, active)
-      values (p_case_id,
-        (v_probe->>'probe_id')::text,
-        (v_probe->>'target')::text,
-        coalesce(v_probe->>'capture', '{}')::jsonb,
-        coalesce(v_probe->>'level', 'warn')::text,
-        true);
-  end loop;
+  insert into public.case_probes (case_id, probe_id, target, capture, level, active)
+    select p_case_id,
+      (p->>'probe_id')::text,
+      (p->>'target')::text,
+      coalesce((p->>'capture')::jsonb, '{}'::jsonb),
+      coalesce(p->>'level', 'warn'),
+      true
+    from jsonb_array_elements(p_probes) AS p;
   return jsonb_build_object('case_id', p_case_id, 'state', p_next_state, 'version', v_case.version + 1, 'updated', true);
 end;
 $$;
