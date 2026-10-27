@@ -42,7 +42,7 @@ def post(base, path, payload, key):
         base.rstrip("/") + path,
         data=json.dumps(payload).encode("utf-8"),
         headers={
-            "Origin": "http://localhost:5173",
+            "Origin": os.environ.get("TELEMETRY_ORIGIN", "http://localhost:5173"),
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json",
         },
@@ -56,7 +56,7 @@ def get(base, path, key):
     request = urllib.request.Request(
         base.rstrip("/") + path,
         headers={
-            "Origin": "http://localhost:5173",
+            "Origin": os.environ.get("TELEMETRY_ORIGIN", "http://localhost:5173"),
             "Authorization": f"Bearer {key}",
         },
         method="GET",

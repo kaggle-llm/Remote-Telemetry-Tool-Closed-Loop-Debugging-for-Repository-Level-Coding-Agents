@@ -461,10 +461,7 @@ const { data, error } = await db.rpc("set_case_instructions", {
     p_next_state: "instrumenting",
     p_ai_session_id: req.aiSessionId || null,
   });
-  if (error) return res.status(409).json({ error: "The case cannot be instrumented from its current state." });
-  res.json(data);
-});
-  if (error) return res.status(409).json({ error: "The case cannot be instrumented from its current state." });
+if (error) return res.status(409).json({ error: "The case cannot be instrumented from its current state." });
   res.json(data);
 });
 
