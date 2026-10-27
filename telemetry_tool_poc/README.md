@@ -4,9 +4,9 @@ This prototype provides Google OAuth through a custom Node backend (no Supabase 
 
 ## Browser demo
 
-`web_demo/` is the management server. Google OAuth is performed by the Node backend; Supabase Auth is not used. The backend creates app sessions and owns the Supabase secret key. Dashboard actions only manage one-time tool keys and per-run session keys. Actual AI tool read/write tests live separately in the root `ai_client_demo/` project.
+`../web_demo/` is the management server. Google OAuth is performed by the Node backend; Supabase Auth is not used. The backend creates app sessions and owns the Supabase secret key. Dashboard actions only manage one-time tool keys and per-run session keys. Actual AI tool read/write tests live separately in the root `ai_client_demo/` project.
 
-Configure the backend environment as described in `SUPABASE_SCHEMA.md`, then run backend and Vite in separate terminals from `web_demo/`:
+Configure the backend environment as described in `SUPABASE_SCHEMA.md`, then run backend and Vite in separate terminals from `../web_demo/`:
 
 ```powershell
 npm install

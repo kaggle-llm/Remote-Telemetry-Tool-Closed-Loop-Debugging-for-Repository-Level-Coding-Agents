@@ -117,6 +117,17 @@ create table if not exists public.case_probes (
 );
 create index if not exists case_probes_case_id_idx on public.case_probes (case_id);
 
+-- case_reports: timeline of user re-check reports. Kept separate from
+-- debug_cases.user_report so that repeated re-checks cannot overflow the
+-- 4000-character column constraint on the original report.
+create table if not exists public.case_reports (
+  id uuid primary key default gen_random_uuid(),
+  case_id uuid not null references public.debug_cases(id) on delete cascade,
+  report text not null check (length(report) between 1 and 4000),
+  created_at timestamptz not null default now()
+);
+create index if not exists case_reports_case_id_created_idx on public.case_reports (case_id, created_at desc);
+
 -- Columns must exist before their foreign keys are added: on an existing
 -- database `create table if not exists` above is a no-op, so the alters here
 -- are what actually introduce case_id / client_session_id / ai_session_id.
@@ -336,11 +347,11 @@ end;
 $$;
 
 -- AI sets instructions + probes; transitions state to instrumenting
-create or replace function public.set_case_instructions(p_tool_key text, p_case_id uuid, p_instructions text, p_probes jsonb default '[]'::jsonb, p_next_state text default 'instrumenting')
+create or replace function public.set_case_instructions(p_tool_key text, p_case_id uuid, p_instructions text, p_probes jsonb default '[]'::jsonb, p_next_state text default 'instrumenting', p_ai_session_id uuid default null)
 returns jsonb
 language plpgsql security definer set search_path = ''
 as $$
-declare v_user_id uuid; v_case record; v_allowed_states text[] := array['reported','instrumenting','awaiting_recheck','rechecked','patch_ready','rejected']; v_probe record;
+declare v_user_id uuid; v_case record; v_allowed_states text[] := array['reported','instrumenting','awaiting_recheck','rechecked','patch_ready','rejected']; v_probe record; v_ai_session_id uuid;
 begin
   if p_instructions is null or length(p_instructions) > 8000 then raise exception 'instructions must be 1-8000 characters' using errcode = '22023'; end if;
   if p_next_state not in ('instrumenting','awaiting_recheck') then raise exception 'invalid next_state' using errcode = '22023'; end if;
@@ -351,7 +362,18 @@ begin
     where c.id = p_case_id and c.user_id = v_user_id;
   if not found then raise exception 'case not found' using errcode = '42501'; end if;
   if not (v_case.state = any(v_allowed_states)) then raise exception 'invalid state transition' using errcode = '22023'; end if;
-  update public.debug_cases set instructions = p_instructions, state = p_next_state, version = version + 1, updated_at = now(), state_changed_at = now() where id = p_case_id;
+  -- Resolve the active AI run for this developer account so the case is
+  -- linked to the agent session that is working on it.
+  if p_ai_session_id is null then
+    select s.id into v_ai_session_id from public.ai_sessions s
+      where s.user_id = v_user_id and s.revoked_at is null
+      order by s.created_at desc limit 1;
+  else
+    select s.id into v_ai_session_id from public.ai_sessions s
+      where s.id = p_ai_session_id and s.user_id = v_user_id and s.revoked_at is null;
+    if v_ai_session_id is null then raise exception 'invalid ai session' using errcode = '42501'; end if;
+  end if;
+  update public.debug_cases set instructions = p_instructions, state = p_next_state, ai_session_id = v_ai_session_id, version = version + 1, updated_at = now(), state_changed_at = now() where id = p_case_id;
   -- Upsert probes
   delete from public.case_probes where case_id = p_case_id;
   insert into public.case_probes (case_id, probe_id, target, capture, level, active)
@@ -362,7 +384,7 @@ begin
       coalesce(p->>'level', 'warn'),
       true
     from jsonb_array_elements(p_probes) AS p;
-  return jsonb_build_object('case_id', p_case_id, 'state', p_next_state, 'version', v_case.version + 1, 'updated', true);
+  return jsonb_build_object('case_id', p_case_id, 'state', p_next_state, 'ai_session_id', v_ai_session_id, 'version', v_case.version + 1, 'updated', true);
 end;
 $$;
 
@@ -401,9 +423,10 @@ begin
     where c.id = p_case_id and c.user_id = v_user_id and c.client_session_id = v_session_id;
   if not found then raise exception 'case not found' using errcode = '42501'; end if;
   if v_case.state <> 'awaiting_recheck' then raise exception 'case not awaiting recheck' using errcode = '22023'; end if;
-  -- Append report to user_report as timeline
+  -- Append report to case_reports timeline instead of user_report to avoid
+  -- overflowing the original user_report column constraint.
+  insert into public.case_reports (case_id, report) values (p_case_id, p_report);
   update public.debug_cases set
-    user_report = v_case.user_report || E'\n\n[Re-check ' || to_char(now(), 'YYYY-MM-DD HH24:MI:SS') || '] ' || p_report,
     state = 'rechecked',
     version = version + 1,
     updated_at = now(),
@@ -476,6 +499,8 @@ begin
   if v_case.state <> 'approved' then raise exception 'case not approved for cleanup' using errcode = '22023'; end if;
   delete from public.client_logs where case_id = p_case_id;
   get diagnostics v_deleted = row_count;
+  -- Deactivate probes so the client stops collecting telemetry for this case.
+  update public.case_probes set active = false where case_id = p_case_id;
   update public.debug_cases set state = 'resolved', version = version + 1, updated_at = now(), state_changed_at = now() where id = p_case_id;
   return jsonb_build_object('case_id', p_case_id, 'state', 'resolved', 'deleted_logs', v_deleted, 'cleaned', true);
 end;
@@ -512,7 +537,7 @@ revoke all on function public.write_client_session_log(text, text, text, text, j
 revoke all on function public.write_ingest_client_log(text, text, text, text, jsonb, text, uuid) from public, anon, authenticated;
 revoke all on function public.create_debug_case(text, text, text, text) from public, anon, authenticated;
 revoke all on function public.read_case_state(text, text, uuid) from public, anon, authenticated;
-revoke all on function public.set_case_instructions(text, uuid, text, jsonb, text) from public, anon, authenticated;
+revoke all on function public.set_case_instructions(text, uuid, text, jsonb, text, uuid) from public, anon, authenticated;
 revoke all on function public.read_case_logs(text, uuid, integer) from public, anon, authenticated;
 revoke all on function public.report_case_progress(text, text, uuid, text) from public, anon, authenticated;
 revoke all on function public.approve_case(text, text, uuid, boolean) from public, anon, authenticated;

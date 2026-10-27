@@ -66,7 +66,7 @@ def get(base, path, key):
 
 
 def main():
-    load_env("telemetry_tool_poc/web_demo/.env")
+    load_env("web_demo/.env")
     base = f"http://localhost:{os.getenv('PORT', '5175')}"
     ingest_key = os.environ.get("TELEMETRY_TEST_INGEST_KEY") or os.environ.get("TELEMETRY_INGEST_KEY")
     if not ingest_key:

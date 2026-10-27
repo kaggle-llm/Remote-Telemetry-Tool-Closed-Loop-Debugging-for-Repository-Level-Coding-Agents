@@ -17,13 +17,13 @@ This workspace contains an early-stage research prototype for the **Google - The
    - SQL setup for app-owned `public.users` and app sessions, per-user tool keys/AI sessions, and session-scoped log RPCs. Does not rely on Supabase Auth. Review/migrate existing data before applying.
 
 4. **`telemetry_tool_poc/SUPABASE_SCHEMA.md`**
-   - Google OAuth configuration, key/session flow, security notes, and Python agent-tool setup.
+    - Google OAuth configuration, key/session flow, security notes, and Python agent-tool setup.
 
 5. **`telemetry_tool_poc/telemetry_tool.py`**
-   - Python proof-of-concept agent tool library: session-scoped log read/write, plus the new case-scoped debugging-loop tools (`list_debug_cases`, `fetch_case_logs`, `request_instrumentation`, `await_user_recheck`, `finalize_case`, `abandon_case`, `cleanup_case`).
+    - Python proof-of-concept agent tool library: session-scoped log read/write, plus the new case-scoped debugging-loop tools (`list_debug_cases`, `fetch_case_logs`, `request_instrumentation`, `await_user_recheck`, `finalize_case`, `abandon_case`, `cleanup_case`). Client-session registration uses the ingest key (`TELEMETRY_INGEST_KEY`), not the developer tool key.
 
 6. **`telemetry_tool_poc/agent.yaml`**
-   - Illustrative agent/tool configuration; not verified against the competition harness.
+    - Illustrative agent/tool configuration; not verified against the competition harness.
 
 7. **`telemetry_tool_poc/TOOL_CALLING_EXPLAINED.md`**
    - Technical breakdown of how Gemma 4 autonomously triggers tool calls based on context and task prompts.
@@ -40,7 +40,7 @@ This workspace contains an early-stage research prototype for the **Google - The
 11. **`telemetry_tool_poc/lint_schema.py`**
     - Static checker that verifies the Supabase migration's foreign-key column ordering before it is applied.
 
-12. **`telemetry_tool_poc/web_demo/`**
+12. **`web_demo/`**
     - Management server: Google OAuth, app-owned account, separate ingest/developer keys, AI session management, and the full case lifecycle (`/api/client/cases/*`, `/api/tool/cases/*`).
 
 13. **`ai_client_demo/`**

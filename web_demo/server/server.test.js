@@ -10,6 +10,7 @@ import {
   normalizeProbes,
   redactDetail,
   redactRows,
+  scrubFreeText,
 } from "./case_rules.js";
 
 test("application session tokens are random and hashed at rest", () => {
@@ -134,4 +135,37 @@ test("case identifiers are validated as uuids", () => {
   assert.equal(isUuid("11111111-2222-3333-4444-55555555555"), false);
   assert.equal(isUuid("not-a-uuid"), false);
   assert.equal(isUuid(42), false);
+});
+
+test("free-text scrubbing redacts emails and long numbers", () => {
+  const scrubbed = scrubFreeText("report at user@example.com, phone 5551234567");
+  assert.ok(!scrubbed.includes("user@example.com"));
+  assert.ok(scrubbed.includes("[REDACTED_EMAIL]"));
+  assert.ok(scrubbed.includes("[REDACTED_NUMBER]"));
+});
+
+test("free-text scrubbing truncates oversized strings", () => {
+  assert.equal(scrubFreeText("x".repeat(9000)).length, 4000);
+});
+
+test("redactRows scrubs free-text columns in addition to detail", () => {
+  const rows = redactRows([{
+    id: 1, title: "report at user@example.com",
+    instructions: "retry", detail: { password: "p" },
+  }]);
+  assert.equal(rows[0].id, 1);
+  assert.ok(rows[0].title.includes("[REDACTED_EMAIL]"));
+  assert.ok(rows[0].instructions.includes("retry"));
+  assert.equal(rows[0].detail.password, "[REDACTED]");
+});
+
+test("redactRows leaves non-string columns untouched", () => {
+  const rows = redactRows([{
+    id: 7, version: 3, state: "reported",
+    user_report: "ok at a@b.com", detail: { keep: "visible" },
+  }]);
+  assert.equal(rows[0].id, 7);
+  assert.equal(rows[0].version, 3);
+  assert.equal(rows[0].state, "reported");
+  assert.equal(rows[0].detail.keep, "visible");
 });

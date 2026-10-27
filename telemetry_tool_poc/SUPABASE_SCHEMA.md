@@ -6,7 +6,7 @@ This configuration does **not** use Supabase Auth. Google OAuth is performed by 
 
 1. Apply the latest `supabase_setup.sql` in Supabase SQL Editor. It creates app-owned users, `client_logs`, app sessions, tool keys, AI sessions, scoped log RPCs, and the required `service_role` table grants. The SQL creates `public.client_logs` if it does not exist.
 2. Create a Google OAuth web client in Google Cloud. Set the authorized redirect URI to `GOOGLE_CALLBACK_URL` (for local development: `http://localhost:5174/api/auth/google/callback`).
-3. Copy `web_demo/.env.example` to `web_demo/.env` and set the real backend environment values there. The server loads `.env` via `dotenv`; `.env` is ignored by Git. Never commit or share the populated file.
+3. Copy `../web_demo/.env.example` to `../web_demo/.env` and set the real backend environment values there. The server loads `.env` via `dotenv`; `.env` is ignored by Git. Never commit or share the populated file.
 
 ```text
 GOOGLE_CLIENT_ID=...
@@ -75,5 +75,6 @@ Enforcement points:
 - `approve_case` only succeeds from `patch_ready`, so the agent cannot mark its own work approved.
 - `purge_case_logs` only succeeds from `approved`, so cleanup cannot run before user consent.
 - `write_ingest_client_log` verifies that the supplied `case_id` belongs to the calling client session; a device cannot write into another device's case.
+- Device events are written only through `/api/client/logs` with an ingest key. The developer-key `/api/client/logs` write path was removed: a developer tool key has no client session, so it cannot vouch for a device's telemetry.
 
-Cleanup deletes only the rows belonging to that case. The `debug_cases` row itself is retained as an audit trail, with the captured telemetry removed. If a research deployment needs the evidence preserved for analysis, anonymize the case into an archive rather than skipping the deletion entirely, and report the two conditions separately.
+Cleanup deletes only the rows belonging to that case and deactivates its probes in the same transaction. The `debug_cases` row itself is retained as an audit trail, with the captured telemetry removed. Re-check reports are stored in a separate `case_reports` timeline table, so repeated re-checks cannot overflow the 4000-character `user_report` column constraint.

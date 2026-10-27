@@ -79,7 +79,7 @@ POST /api/client/cases/:id/report
 }
 ```
 
-Sunucu raporu `user_report` zaman çizelgesine ekler ve durumu `rechecked` yapar. Bu RPC yalnızca `awaiting_recheck` durumundan çalışır; AI istemeden önce rapor gönderilemez.
+Sunucu raporu `case_reports` zaman çizelgesine ekler ve durumu `rechecked` yapar. Bu RPC yalnızca `awaiting_recheck` durumundan çalışır; AI istemeden önce rapor gönderilemez. `case_reports` ayrı bir tabloda tutulduğu için, tekrar eden re-check'ler orijinal `user_report` sütununun 4000 karakter sınırını aşmaz.
 
 ## Adım 6: AI Logları Analiz Ediyor ve Patch Uyguluyor
 
@@ -116,8 +116,8 @@ cleanup_case(case_id = "...")
 
 Bu işlem:
 1. Yalnızca o case'e ait `client_logs` satırlarını siler,
-2. Case'i `resolved` durumuna alır,
-3. Probe'ları pasifleştirir (cihazda artık olay toplanmaz).
+2. Case'in `case_probes` kayıtlarını pasifleştirir (cihazda artık olay toplanmaz),
+3. Case'i `resolved` durumuna alır.
 
 `purge_case_logs` yalnızca `approved` durumundan çalışır; onaysız temizlik mümkün değildir. `debug_cases` satırı denetim izi olarak kalır.
 

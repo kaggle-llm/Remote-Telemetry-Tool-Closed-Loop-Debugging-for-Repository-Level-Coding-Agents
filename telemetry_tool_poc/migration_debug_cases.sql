@@ -34,6 +34,16 @@ create table if not exists public.case_probes (
 );
 create index if not exists case_probes_case_id_idx on public.case_probes (case_id);
 
+-- Timeline of user re-check reports, stored separately from user_report so
+-- repeated re-checks cannot overflow the 4000-character column constraint.
+create table if not exists public.case_reports (
+  id uuid primary key default gen_random_uuid(),
+  case_id uuid not null references public.debug_cases(id) on delete cascade,
+  report text not null check (length(report) between 1 and 4000),
+  created_at timestamptz not null default now()
+);
+create index if not exists case_reports_case_id_created_idx on public.case_reports (case_id, created_at desc);
+
 -- 2. Link telemetry to a case
 alter table public.client_logs add column if not exists case_id uuid;
 alter table public.client_logs drop constraint if exists client_logs_case_id_fkey;
@@ -158,8 +168,10 @@ begin
     where c.id = p_case_id and c.user_id = v_user_id and c.client_session_id = v_session_id;
   if not found then raise exception 'case not found' using errcode = '42501'; end if;
   if v_case.state <> 'awaiting_recheck' then raise exception 'case not awaiting recheck' using errcode = '22023'; end if;
+  -- Append report to case_reports timeline instead of user_report to avoid
+  -- overflowing the original user_report column constraint.
+  insert into public.case_reports (case_id, report) values (p_case_id, p_report);
   update public.debug_cases set
-    user_report = v_case.user_report || E'\n\n[Re-check ' || to_char(now(), 'YYYY-MM-DD HH24:MI:SS') || '] ' || p_report,
     state = 'rechecked',
     version = version + 1,
     updated_at = now(),
@@ -230,6 +242,8 @@ begin
   if v_case.state <> 'approved' then raise exception 'case not approved for cleanup' using errcode = '22023'; end if;
   delete from public.client_logs where case_id = p_case_id;
   get diagnostics v_deleted = row_count;
+  -- Deactivate probes so the client stops collecting telemetry for this case.
+  update public.case_probes set active = false where case_id = p_case_id;
   update public.debug_cases set state = 'resolved', version = version + 1, updated_at = now(), state_changed_at = now() where id = p_case_id;
   return jsonb_build_object('case_id', p_case_id, 'state', 'resolved', 'deleted_logs', v_deleted, 'cleaned', true);
 end;

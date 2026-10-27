@@ -33,7 +33,7 @@ def post(base, path, payload, key):
 
 
 def main():
-    load_env("telemetry_tool_poc/web_demo/.env")
+    load_env("web_demo/.env")
     base = f"http://localhost:{os.getenv('PORT', '5175')}"
     ingest_key = os.environ["TELEMETRY_TEST_INGEST_KEY"]
     tool_key = os.environ["TELEMETRY_TOOL_KEY"]

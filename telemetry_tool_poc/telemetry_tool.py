@@ -28,21 +28,25 @@ class TelemetryError(RuntimeError):
 class TelemetryAPIClient:
     """Calls the app API; the AI client never connects to Supabase directly."""
 
-    def __init__(self, base_url, developer_key, timeout=10):
+    def __init__(self, base_url, developer_key, timeout=10, origin=None):
         self.base_url = base_url.rstrip("/")
         self.developer_key = developer_key
         self.timeout = timeout
+        self.origin = origin
 
     def post(self, path, payload):
         body = json.dumps(payload).encode("utf-8")
+        headers = {
+            "Authorization": f"Bearer {self.developer_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        if self.origin:
+            headers["Origin"] = self.origin
         request = Request(
             urljoin(self.base_url + "/", path.lstrip("/")),
             data=body,
-            headers={
-                "Authorization": f"Bearer {self.developer_key}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
+            headers=headers,
             method="POST",
         )
         try:
@@ -143,6 +147,17 @@ def _client_from_environment():
     return TelemetryAPIClient(base_url, developer_key)
 
 
+def _ingest_client_from_environment():
+    base_url = os.getenv("TELEMETRY_DOMAIN")
+    ingest_key = os.getenv("TELEMETRY_INGEST_KEY")
+    if not base_url or not ingest_key:
+        raise TelemetryError("Set TELEMETRY_DOMAIN and TELEMETRY_INGEST_KEY to register a client session.")
+    if not base_url.startswith(("http://", "https://")):
+        raise TelemetryError("TELEMETRY_DOMAIN must be an http(s) URL.")
+    origin = os.getenv("TELEMETRY_ORIGIN", "").strip() or None
+    return TelemetryAPIClient(base_url, ingest_key, origin=origin)
+
+
 def fetch_client_logs(session_key: str, limit: int = 20) -> str:
     """Fetch logs belonging to the active AI session through the management API."""
     _validate_session_key(session_key)
@@ -185,13 +200,13 @@ def start_ai_session(name: str = "AI run") -> str:
 
 
 def start_client_session(name: str = "client app") -> str:
-    """Register an app/client session with the developer key; return its secret once."""
+    """Register an app/client session with an ingest key; return its secret once."""
     if not isinstance(name, str) or not name.strip() or len(name) > 80:
         raise ValueError("Client session name must be between 1 and 80 characters.")
     client_id = os.getenv("TELEMETRY_CLIENT_ID", "").strip()
     if not client_id or len(client_id) > 100:
         raise TelemetryError("Set TELEMETRY_CLIENT_ID to a stable app/device identifier before creating a client session.")
-    session = _client_from_environment().create_client_session(name.strip(), client_id)
+    session = _ingest_client_from_environment().create_client_session(name.strip(), client_id)
     key = session.get("session_key") if isinstance(session, dict) else None
     if not key or not key.startswith("tcs_"):
         raise TelemetryError("Server did not return a client session key.")

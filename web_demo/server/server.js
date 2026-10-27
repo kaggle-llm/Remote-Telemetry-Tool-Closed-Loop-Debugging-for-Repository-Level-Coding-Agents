@@ -1,10 +1,12 @@
 import "dotenv/config";
 import crypto from "node:crypto";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import express from "express";
 import cookieParser from "cookie-parser";
 import { OAuth2Client } from "google-auth-library";
 import { createClient } from "@supabase/supabase-js";
-import { CASE_STATES, MAX_PROBES, isUuid, redactDetail, redactRows, normalizeProbes } from "./case_rules.js";
+import { CASE_STATES, MAX_PROBES, isUuid, redactDetail, redactRows, normalizeProbes, scrubFreeText } from "./case_rules.js";
 
 const required = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_CALLBACK_URL", "APP_SESSION_SECRET", "SUPABASE_URL", "SUPABASE_SECRET_KEY", "APP_ORIGIN"];
 for (const name of required) if (!process.env[name]) throw new Error(`Missing environment variable: ${name}`);
@@ -210,6 +212,8 @@ async function requireToolKey(req, res, next) {
     if (error || !data) return res.status(401).json({ error: "Invalid or revoked developer key." });
     req.toolKey = match[1];
     req.toolOwner = data;
+    const { data: sessionData } = await db.from("ai_sessions").select("id").eq("user_id", data.user_id).is("revoked_at", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    req.aiSessionId = sessionData?.[0]?.id || null;
     next();
   } catch {
     res.status(401).json({ error: "Developer key validation failed." });
@@ -290,7 +294,7 @@ app.post("/api/client/sessions", sameOrigin, requireIngestKey, async (req, res) 
 });
 
 app.post("/api/client/logs", sameOrigin, requireIngestKey, async (req, res) => {
-  const rateKey = `client-log:${req.ingestOwner.id}`;
+  const rateKey = `client-log-ingest:${req.ingestOwner.id}`;
   const now = Date.now();
   const state = ingestRateLimits.get(rateKey) || { windowStart: now, count: 0 };
   if (now - state.windowStart > 60000) { state.windowStart = now; state.count = 0; }
@@ -321,20 +325,9 @@ app.post("/api/client/sessions/resolve", sameOrigin, requireToolKey, async (req,
   res.json({ id: data.id, name: data.name, session_prefix: data.session_prefix });
 });
 
-app.post("/api/client/logs", sameOrigin, requireToolKey, async (req, res) => {
-  const { session_key: sessionKey, level, event, detail, user_agent: userAgent } = req.body || {};
-  if (typeof sessionKey !== "string" || !sessionKey.startsWith("tcs_")) return res.status(400).json({ error: "Client session key required." });
-  const { data, error } = await db.rpc("write_client_session_log", {
-    p_tool_key: req.toolKey,
-    p_client_session_key: sessionKey,
-    p_level: level,
-    p_event: event,
-    p_detail: detail ? redactDetail(detail) : detail,
-    p_user_agent: userAgent || null,
-  });
-  if (error) return res.status(403).json({ error: "Client log rejected: invalid key/session pair or invalid event." });
-  res.status(201).json(data);
-});
+// Tool-key client log injection is intentionally absent: a developer tool key
+// has no client session, so it cannot vouch for a device's telemetry. Device
+// events are written only through /api/client/logs with an ingest key.
 
 app.post("/api/tool/client-logs", sameOrigin, requireToolKey, async (req, res) => {
   const { session_key: clientSessionKey, limit = 50 } = req.body || {};
@@ -345,7 +338,7 @@ app.post("/api/tool/client-logs", sameOrigin, requireToolKey, async (req, res) =
     p_limit: Number(limit),
   });
   if (error) return res.status(403).json({ error: "Client session is invalid, revoked, or does not belong to this developer key." });
-  res.json(data);
+  res.json(redactRows(data || []));
 });
 
 app.post("/api/tool/client-logs/recent", sameOrigin, requireToolKey, async (req, res) => {
@@ -359,7 +352,7 @@ app.post("/api/tool/client-logs/recent", sameOrigin, requireToolKey, async (req,
   }
   const { data, error } = await query;
   if (error) return res.status(403).json({ error: "Could not read recent client logs." });
-  res.json(data);
+  res.json(redactRows(data || []));
 });
 
 // ---------------------------------------------------------------- debug cases
@@ -393,7 +386,7 @@ app.post("/api/client/cases/:id/state", sameOrigin, requireIngestKey, async (req
     p_case_id: req.params.id,
   });
   if (error) return res.status(404).json({ error: "Case not found." });
-  const instructions = data.instructions ? String(data.instructions).slice(0, 4000) : null;
+  const instructions = data.instructions ? String(data.instructions).slice(0, 8000) : null;
   res.json({ ...data, instructions });
 });
 
@@ -443,7 +436,7 @@ app.post("/api/tool/cases", sameOrigin, requireToolKey, async (req, res) => {
   if (state !== null && !CASE_STATES.includes(state)) return res.status(400).json({ error: "Invalid case state." });
   const { data, error } = await db.rpc("list_cases", { p_tool_key: req.toolKey, p_limit: limit, p_state: state });
   if (error) return res.status(403).json({ error: "Could not list debug cases." });
-  res.json(data);
+  res.json(redactRows(data || []));
 });
 
 app.post("/api/tool/cases/:id/logs", sameOrigin, requireToolKey, async (req, res) => {
@@ -460,13 +453,17 @@ app.post("/api/tool/cases/:id/instrument", sameOrigin, requireToolKey, async (re
   if (!instructions || instructions.length > 8000) return res.status(400).json({ error: "instructions must be 1-8000 characters." });
   const probes = normalizeProbes(req.body?.probes || []);
   if (!probes) return res.status(400).json({ error: `probes must be an array of at most ${MAX_PROBES} valid probe objects.` });
-  const { data, error } = await db.rpc("set_case_instructions", {
+const { data, error } = await db.rpc("set_case_instructions", {
     p_tool_key: req.toolKey,
     p_case_id: req.params.id,
     p_instructions: instructions,
     p_probes: probes,
     p_next_state: "instrumenting",
+    p_ai_session_id: req.aiSessionId || null,
   });
+  if (error) return res.status(409).json({ error: "The case cannot be instrumented from its current state." });
+  res.json(data);
+});
   if (error) return res.status(409).json({ error: "The case cannot be instrumented from its current state." });
   res.json(data);
 });
@@ -509,5 +506,5 @@ app.post("/api/tool/cases/:id/cleanup", sameOrigin, requireToolKey, async (req, 
   res.json(data);
 });
 
-app.use(express.static(new URL("../dist", import.meta.url).pathname));
+app.use(express.static(path.join(path.dirname(fileURLToPath(import.meta.url)), "../dist")));
 app.listen(Number(process.env.PORT || 5175), "0.0.0.0", () => console.log(`Telemetry API listening on ${process.env.PORT || 5175}`));

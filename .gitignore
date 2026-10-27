@@ -33,11 +33,11 @@ _ReSharper*/
 packages/
 gemma-4-developer-agent-paper.zip
 /telemetry_tool_poc/__pycache__/
-/telemetry_tool_poc/web_demo/node_modules/
-/telemetry_tool_poc/web_demo/dist/
-/telemetry_tool_poc/web_demo/.env
-/telemetry_tool_poc/web_demo/.env.*
-!/telemetry_tool_poc/web_demo/.env.example
+/web_demo/node_modules/
+/web_demo/dist/
+/web_demo/.env
+/web_demo/.env.*
+!/web_demo/.env.example
 /ai_client_demo/.env
 /ai_client_demo/__pycache__/
 telemetry_tool_poc/.env

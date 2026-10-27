@@ -58,7 +58,7 @@ RPCS = {
 
 
 def main():
-    load_env("telemetry_tool_poc/web_demo/.env")
+    load_env("../web_demo/.env")
     base = os.environ["SUPABASE_URL"].rstrip("/")
     key = os.environ["SUPABASE_SECRET_KEY"]
     headers = {"apikey": key, "Authorization": f"Bearer {key}"}
