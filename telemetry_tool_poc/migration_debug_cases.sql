@@ -106,11 +106,14 @@ begin
 end;
 $$;
 
-create or replace function public.set_case_instructions(p_tool_key text, p_case_id uuid, p_instructions text, p_probes jsonb default '[]'::jsonb, p_next_state text default 'instrumenting')
+-- Drop the pre-overload 5-arg signature so the 6-arg version is unambiguous.
+drop function if exists public.set_case_instructions(text, uuid, text, jsonb, text);
+
+create or replace function public.set_case_instructions(p_tool_key text, p_case_id uuid, p_instructions text, p_probes jsonb default '[]'::jsonb, p_next_state text default 'instrumenting', p_ai_session_id uuid default null)
 returns jsonb
 language plpgsql security definer set search_path = ''
 as $$
-declare v_user_id uuid; v_case record; v_allowed_states text[] := array['reported','instrumenting','awaiting_recheck','rechecked','patch_ready','rejected'];
+declare v_user_id uuid; v_case record; v_allowed_states text[] := array['reported','instrumenting','awaiting_recheck','rechecked','patch_ready','rejected']; v_probe record; v_ai_session_id uuid;
 begin
   if p_instructions is null or length(p_instructions) > 8000 then raise exception 'instructions must be 1-8000 characters' using errcode = '22023'; end if;
   if p_next_state not in ('instrumenting','awaiting_recheck') then raise exception 'invalid next_state' using errcode = '22023'; end if;
@@ -121,7 +124,19 @@ begin
     where c.id = p_case_id and c.user_id = v_user_id;
   if not found then raise exception 'case not found' using errcode = '42501'; end if;
   if not (v_case.state = any(v_allowed_states)) then raise exception 'invalid state transition' using errcode = '22023'; end if;
-  update public.debug_cases set instructions = p_instructions, state = p_next_state, version = version + 1, updated_at = now(), state_changed_at = now() where id = p_case_id;
+  -- Resolve the active AI run for this developer account so the case is
+  -- linked to the agent session that is working on it.
+  if p_ai_session_id is null then
+    select s.id into v_ai_session_id from public.ai_sessions s
+      where s.user_id = v_user_id and s.revoked_at is null
+      order by s.created_at desc limit 1;
+  else
+    select s.id into v_ai_session_id from public.ai_sessions s
+      where s.id = p_ai_session_id and s.user_id = v_user_id and s.revoked_at is null;
+    if v_ai_session_id is null then raise exception 'invalid ai session' using errcode = '42501'; end if;
+  end if;
+  update public.debug_cases set instructions = p_instructions, state = p_next_state, ai_session_id = v_ai_session_id, version = version + 1, updated_at = now(), state_changed_at = now() where id = p_case_id;
+  -- Upsert probes
   delete from public.case_probes where case_id = p_case_id;
   insert into public.case_probes (case_id, probe_id, target, capture, level, active)
     select p_case_id,
@@ -131,7 +146,7 @@ begin
       coalesce(p->>'level', 'warn'),
       true
     from jsonb_array_elements(p_probes) AS p;
-  return jsonb_build_object('case_id', p_case_id, 'state', p_next_state, 'version', v_case.version + 1, 'updated', true);
+  return jsonb_build_object('case_id', p_case_id, 'state', p_next_state, 'ai_session_id', v_ai_session_id, 'version', v_case.version + 1, 'updated', true);
 end;
 $$;
 

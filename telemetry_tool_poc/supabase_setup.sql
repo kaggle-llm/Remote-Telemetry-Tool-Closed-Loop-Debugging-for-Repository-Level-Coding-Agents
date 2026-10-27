@@ -346,6 +346,9 @@ begin
 end;
 $$;
 
+-- Drop the pre-overload 5-arg signature so the 6-arg version is unambiguous.
+drop function if exists public.set_case_instructions(text, uuid, text, jsonb, text);
+
 -- AI sets instructions + probes; transitions state to instrumenting
 create or replace function public.set_case_instructions(p_tool_key text, p_case_id uuid, p_instructions text, p_probes jsonb default '[]'::jsonb, p_next_state text default 'instrumenting', p_ai_session_id uuid default null)
 returns jsonb

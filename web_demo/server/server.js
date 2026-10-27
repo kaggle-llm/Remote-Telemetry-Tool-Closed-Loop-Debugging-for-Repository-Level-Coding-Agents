@@ -477,6 +477,7 @@ app.post("/api/tool/cases/:id/await-recheck", sameOrigin, requireToolKey, async 
     p_instructions: instructions,
     p_probes: probes,
     p_next_state: "awaiting_recheck",
+    p_ai_session_id: req.aiSessionId || null,
   });
   if (error) return res.status(409).json({ error: "The case cannot request a re-check from its current state." });
   res.json(data);
