@@ -4,7 +4,7 @@
 
 ## Abstract
 
-Repository-level coding agents can read source code and run local tests, but they cannot observe failures on a user's remote device. We present **Remote Telemetry Tool**, a prototype architecture that gives a coding agent task-scoped client telemetry and closes the loop between diagnosis, repair and device-side verification. It combines bounded, redacted event retrieval; a server-enforced case state machine the agent cannot skip or approve on the user's behalf; and instrumentation probes published as data and withdrawn at cleanup, so a client emits nothing until an agent asks for evidence. We report a paired evaluation in which the same local Gemma 4 model, prompts, tools and repository copies ran with and without diagnostic telemetry on synthetic client failures, with repair decided by a held-out test the agent never saw and run order randomized. <<ABSTRACT_RESULT>> The artifact implements the protocol end to end, including the client probe runtime; 102 tests pass, and no deployment-security or production-reliability claim is made.
+Repository-level coding agents read source code and run local tests, but they cannot observe failures on a user's remote device. We present **Remote Telemetry Tool**, a prototype architecture that gives a coding agent task-scoped client telemetry and closes the loop between diagnosis, repair and device-side verification. It combines bounded, redacted event retrieval; a server-enforced case state machine the agent cannot skip or approve on the user's behalf; and instrumentation probes published as data and withdrawn at cleanup, so a client emits nothing until an agent asks for evidence. We report a paired evaluation in which the same local Gemma 4 model, prompts, tools and repository copies ran with and without diagnostic telemetry on synthetic client failures, with repair decided by a held-out test the agent never saw and run order randomized. Across 18 paired trials both conditions repaired 10 of 18 failures (exact McNemar p = 1.000): telemetry helped where the cause was ambiguous and cost turns where the cause was already visible in the code. The artifact implements the protocol end to end, including the client probe runtime; 102 tests pass, and no deployment-security or production-reliability claim is made.
 
 ## 1. Introduction
 
@@ -17,20 +17,18 @@ Remote telemetry could narrow that search, but giving an agent broad database ac
 Our contribution is a protocol, its client and server halves, and a controlled measurement of what the evidence is worth.
 
 1. **A closed debugging loop.** A case object carries evidence from a user's report to an agent's proposal, and a server-enforced state machine separates *evidence collected* from *repair validated*. The agent cannot skip the user, and it cannot approve a fix on the user's behalf.
-2. **Reversible, runtime-selectable instrumentation.** Probes are declared as data and published to a case, so an agent can refine what it observes without shipping a new build, and instrumentation can be withdrawn when the case closes. The default client emits nothing.
+2. **Reversible, runtime-selectable instrumentation.** Probes are declared as data and published to a case, so an agent can refine what it observes without shipping a new build, and instrumentation is withdrawn when the case closes. The default client emits nothing.
 3. **An explicit verification boundary.** We report a paired pilot, an invalid earlier run kept for audit, and an adversarial suite instead of a claim.
 
 Everything below was produced by the harness in this repository; where a result is missing we say so.
 
 ## 2. Related Work
 
-The references are representative, and locate the contribution against the work a reviewer is most likely to compare it with.
-
 *Repository-level agents.* SWE-bench [1] evaluates whether models resolve real GitHub issues from an issue description and a repository snapshot; SWE-agent [2] shows that the agent-computer interface, not only the model, materially changes performance; Agentless [3] shows that a simple localization-repair-validation pipeline can beat complex scaffolds. All three observe failures through the repository and the test harness. Mobile agent work gets closer to the device: AppAgent [11] operates smartphone applications through a tap-and-swipe action space, Mobile-Agent-v2 [10] adds planning and reflection over screen history, and AndroidWorld [12] validates task success by inspecting device system state. Those systems read the device through pixels or a benchmark harness; none lets an agent *select runtime instrumentation* on a user's device and read back the structured result.
 
-*Closed-loop repair and runtime evidence.* The monitor-analyze-plan-execute loop of autonomic computing [7] is the canonical closed-loop architecture, RepairAgent [8] drives an LLM repair agent with a finite state machine that interleaves evidence gathering, repair and validation, and RCAgent [9] diagnoses a deployed cloud system from runtime evidence collected with tools. On instrumentation, TaintDroid [13] records information-flow facts on a real device, and Sage [14] localizes root causes from distributed traces and applies corrective actions. Our claim is narrower: we propose neither a new event format nor a new control loop, but the *protocol* that joins them for an agent debugging one user's device under a human approval gate, in which instrumentation is published as data by the agent, scoped to one case, and withdrawn when the case closes.
+*Closed-loop repair and runtime evidence.* The monitor-analyze-plan-execute loop of autonomic computing [7] is the canonical closed-loop architecture, RepairAgent [8] drives an LLM repair agent with a finite state machine that interleaves evidence gathering, repair and validation, and RCAgent [9] diagnoses a deployed cloud system from runtime evidence collected with tools. On instrumentation, TaintDroid [13] records information-flow facts on a real device, Sage [14] localizes root causes from distributed traces and applies corrective actions, and fault-injection tooling [20] injects failures into running systems. Our claim is narrower: neither a new event format nor a new control loop, but the *protocol* that joins them for an agent debugging one user's device under a human approval gate, in which instrumentation is published as data by the agent, scoped to one case, and withdrawn when the case closes.
 
-*Untrusted tool output and small local models.* Retrieved or tool-returned content can hijack an agent's instructions [15], and AgentDojo [16] is the standard benchmark for that risk; our tool output is therefore evidence, never instructions, and the harness asserts this. AgentBench [17] reports that open models trail much larger ones, which is why our measurement uses a small local Gemma 4 build [4], and SWE-Gym [18] shows that execution feedback can train agents and verifiers, the natural direction for case-scoped telemetry as a training signal. RULER [19] reports that claimed context windows overstate usable context for small open models.
+*Untrusted tool output and small local models.* Retrieved or tool-returned content can hijack an agent's instructions [15], and AgentDojo [16] is the standard benchmark for that risk; our tool output is therefore evidence, never instructions, and the harness asserts this. AgentBench [17] reports that open models trail much larger ones, which is why our measurement uses a small local Gemma 4 build [4]; RULER [19] reports that claimed context windows overstate usable context for small open models, and ToolACE [22] measures what small open-weight models can do with function calling. SWE-Gym [18] and SWE-smith [21] show that execution feedback can train agents and verifiers, the natural direction for case-scoped telemetry as a training signal.
 
 The gap we claim is narrow and testable: **no reviewed system treats the end user's device as an explicit participant in an agentic debugging loop with agent-selected, withdrawable instrumentation, a server-enforced separation between evidence collection and repair validation, a human approval gate before telemetry deletion, and a paired measurement of the evidence's value.**
 
@@ -42,7 +40,7 @@ An instrumented client emits a compact event when a relevant operation fails: a 
 
 ### 3.2 Storage and access control
 
-The Supabase schema defines app-owned `public.users`, `public.app_sessions`, `public.client_logs`, `public.debug_cases`, `public.case_probes`, `public.case_reports`, `public.tool_api_keys` and `public.ai_sessions`. A `client_logs` row carries a bounded `level`, a bounded `event` name, a JSONB `detail` object, optional user-agent metadata, a server-generated timestamp, and a nullable `case_id` linking the event to the debugging attempt that requested it; a composite `(user_id, created_at DESC)` index supports recent-event queries, and `case_id` filtering keeps case reads cheap.
+The Supabase schema defines app-owned `public.users`, `public.app_sessions`, `public.client_logs`, `public.debug_cases`, `public.case_probes`, `public.case_reports`, `public.tool_api_keys` and `public.ai_sessions`. A `client_logs` row carries a bounded `level`, a bounded `event` name, a JSONB `detail` object, optional user-agent metadata, a server-generated timestamp, and a nullable `case_id` linking the event to the debugging attempt that requested it; a composite `(user_id, created_at DESC)` index supports recent-event queries.
 
 The schema is not by itself a security boundary. Every access goes through security-definer RPCs that hash the presented key, resolve it to an owning `user_id`, and verify that the requested case belongs to that user before returning or mutating anything; the functions pin `search_path = ''` and revoke execute privileges from `public`, `anon` and `authenticated` before targeted grants, the standard pattern for row ownership and function privileges [5, 6]. The backend holds a server-only Supabase secret key that bypasses RLS, so the rules live in application code and RPC bodies; a deployment must add independent defense in depth and must never expose that key to a client or to model context.
 
@@ -50,16 +48,16 @@ The schema is not by itself a security boundary. Every access goes through secur
 
 The agent never receives arbitrary SQL or unrestricted credentials. `telemetry_tool.py` exposes one agent-facing function per capability; each validates its arguments locally, calls the management API with a developer key, and returns JSON to the model (Table 1).
 
-| Tool (agent-facing function) | Bounds enforced before the call |
+| Tool | Bounds enforced before the call |
 | --- | --- |
 | `list_debug_cases_for_agent(limit, state)` | `limit` 1..100; known `state` |
 | `fetch_case_logs_for_agent(case_id, limit)` | UUID `case_id`; `limit` 1..100 |
 | `fetch_recent_client_logs_for_agent(limit, client_session_id)` | `limit` 1..100; optional session filter |
-| `request_instrumentation_for_agent(case_id, instructions, probes)` | <=20 probes; `probe_id` <=80 chars; `target` <=200; `level` in {info, warn, error}; `capture` an object |
-| `await_user_recheck_for_agent(case_id, instructions, probes)` | Same probe bounds; probes optional |
-| `finalize_case_for_agent(case_id)` | Only from `rechecked` |
-| `abandon_case_for_agent(case_id)` | Only from non-terminal states |
-| `cleanup_case_for_agent(case_id)` | Only from `approved`; deletes telemetry and deactivates probes |
+| `request_instrumentation_for_agent(case_id, instructions, probes)` | ≤20 probes; `probe_id` ≤80 chars; `target` ≤200; `level` in {info, warn, error}; `capture` object |
+| `await_user_recheck_for_agent(case_id, instructions, probes)` | same probe bounds; probes optional |
+| `finalize_case_for_agent(case_id)` | only from `rechecked` |
+| `abandon_case_for_agent(case_id)` | only from non-terminal states |
+| `cleanup_case_for_agent(case_id)` | only from `approved`; deletes telemetry, deactivates probes |
 
 Output is bounded as well as input. Detail objects are redacted recursively against a fixed set of sensitive keys; free-text fields are scrubbed for e-mail addresses and long digit runs and truncated at 4000 characters; row count and total response size are capped at 256 KB. These are defense-in-depth measures, not a privacy guarantee.
 
@@ -73,21 +71,21 @@ Read access alone does not close the loop: an agent can observe an event but can
 
 ![Figure 2: The closed debugging loop.](figure_closed_loop.png)
 
-The client first reports the failure, which creates a `debug_cases` row with the user's own description and captures no telemetry. The agent then publishes probes (`probe_id`, `target`, bounded `capture` object, `level`) and instructions; the client applies the probes at runtime and links every resulting event to the case, so evidence is scoped to one attempt. When the agent asks the user to try again, the case moves to `awaiting_recheck` and the client polls case state with a version counter, so no push infrastructure is required; the client's answer is appended to `case_reports` and moves the case to `rechecked`. The agent then reads only case-scoped evidence, separates observation from inference, inspects the repository and proposes a minimal patch, and calls `finalize_case` to reach `patch_ready`; it cannot skip that state and cannot approve on the user's behalf. Only after the user approves through `approve_case` may the agent call `cleanup_case`, which deletes the case's telemetry, deactivates its probes so the device stops collecting, and marks the case `resolved`.
+The client first reports the failure, which creates a `debug_cases` row with the user's own description and captures no telemetry. The agent publishes probes (`probe_id`, `target`, bounded `capture` object, `level`) and instructions; the client applies them at runtime and links every resulting event to the case, so evidence is scoped to one attempt. When the agent asks the user to try again, the case moves to `awaiting_recheck` and the client polls case state with a version counter, so no push infrastructure is required; the client's answer is appended to `case_reports` and moves the case to `rechecked`. The agent then reads only case-scoped evidence, separates observation from inference, inspects the repository and proposes a minimal patch, and calls `finalize_case` to reach `patch_ready`; it cannot skip that state and cannot approve on the user's behalf. Only after the user approves through `approve_case` may the agent call `cleanup_case`, which deletes the case's telemetry, deactivates its probes so the device stops collecting, and marks the case `resolved`.
 
 Table 2 gives the state machine, enforced in the Express layer and in the RPCs, so a disallowed transition yields an error rather than an inconsistent record.
 
-| State | Meaning | Allowed next states |
-| --- | --- | --- |
-| `reported` | Failure reported | `instrumenting`, `abandoned` |
-| `instrumenting` | Probes live | `awaiting_recheck`, `instrumenting`, `abandoned` |
-| `awaiting_recheck` | Reproduction asked | `rechecked`, `instrumenting`, `abandoned` |
-| `rechecked` | Outcome in | `patch_ready`, `instrumenting`, `abandoned` |
-| `patch_ready` | Fix ready | `approved`, `rejected`, `instrumenting`, `abandoned` |
-| `approved` | Fix accepted | `resolved` |
-| `rejected` | Fix refused | `instrumenting`, `abandoned` |
-| `resolved` | Cleaned up | none (terminal) |
-| `abandoned` | Ended | none (terminal) |
+| State | Allowed next states |
+| --- | --- |
+| `reported` | `instrumenting`, `abandoned` |
+| `instrumenting` | `awaiting_recheck`, `instrumenting`, `abandoned` |
+| `awaiting_recheck` | `rechecked`, `instrumenting`, `abandoned` |
+| `rechecked` | `patch_ready`, `instrumenting`, `abandoned` |
+| `patch_ready` | `approved`, `rejected`, `instrumenting`, `abandoned` |
+| `approved` | `resolved` |
+| `rejected` | `instrumenting`, `abandoned` |
+| `resolved` | none (terminal) |
+| `abandoned` | none (terminal) |
 
 Figure 3 draws the same machine as a transition graph, including the returns to `instrumenting` and the terminal states.
 
@@ -105,8 +103,7 @@ A user selects text and taps the highlight control, but the color palette never 
 
 ```json
 {"level": "error", "event": "highlight_palette_presentation_failed",
- "detail": {"view": "HighlightPaletteView", "failure_code": "missing_presentation_context",
-            "app_version": "1.2.0", "os_version": "iOS 18"}}
+ "detail": {"view": "HighlightPaletteView", "failure_code": "missing_presentation_context"}}
 ```
 
 The agent retrieves only events authorized for that case and searches the repository for the palette presentation path. The event guides the search but does not prove the root cause: instrumentation may be incomplete, the event may be stale, or the failure may have another cause. A valid repair claim requires a test or a controlled reproduction.
@@ -133,7 +130,22 @@ A three-task exploratory run with `gemma4:31b:cloud` is retained in `eval/result
 
 ### 5.3 Paired evaluation: task-scoped telemetry against none
 
-<<RESULTS_SECTION>>
+We ran 6 synthetic tasks with 3 repeats each, giving 18 paired trials against the local fixture backend with `iandiii/gemma4:e4b-64k` (seed 20261028). Condition A's case-scoped telemetry was empty; condition B's contained the diagnostic events. Prompt, tool schemas, repository copy and model were identical, trial order was randomized, repair was decided by the held-out validation test the agent never saw, and root cause was scored by a frozen rubric that cannot observe the condition.
+
+| Outcome (18 paired trials) | A: no events | B: with events |
+| --- | --- | --- |
+| Held-out validation test passed | 10/18 | 10/18 |
+| Root cause matched rubric | 11/18 | 9/18 |
+| Named the responsible module | 14/18 | 13/18 |
+| Telemetry fetches / file edits | 10 / 20 | 7 / 21 |
+
+![Figure 4: Paired evaluation results.](figure_ab_results.png)
+
+Repair did not differ: 8 pairs passed in both conditions, 6 in neither, and 2 discordant pairs in each direction, so the exact McNemar test gives p = 1.000. Diagnosis was slightly worse with telemetry (discordant pairs 2 against 4, p = 0.688) and module localization was unchanged (p = 1.000). Telemetry also cost context: the mean token difference B − A was 897 (95% bootstrap CI −2,443 to 4,475).
+
+The effect is concentrated per task. On the stale-auth-cache task, whose cause is ambiguous from the repository alone, condition B repaired 2 of 3 trials and condition A none. On two tasks whose cause is visible in the code, condition A repaired 3 of 3 and condition B 2 of 3, and condition B's root-cause score fell from 3/3 to 2/3 and from 3/3 to 1/3: the extra evidence invited a misdiagnosis on self-evident code. On the retry-idempotency task neither condition repaired anything; on the palette task both repaired 3 of 3.
+
+The pilot therefore supports no general claim that telemetry improves repair. It supports a narrower one: task-scoped telemetry is worth fetching when the repository does not by itself identify the cause, and it can waste turns and introduce a wrong diagnosis when the cause is already obvious. With 18 pairs the per-task differences are suggestions, not effects.
 
 ### 5.4 Adversarial and safety evaluation
 
@@ -168,6 +180,9 @@ Task-scoped remote telemetry closes the information gap between a local coding a
 17. Liu et al., "AgentBench: Evaluating LLMs as Agents." ICLR 2024. arXiv:2308.03688.
 18. Pan et al., "Training Software Engineering Agents and Verifiers with SWE-Gym." ICML 2025. arXiv:2412.21139.
 19. Hsieh et al., "RULER: What's the Real Context Size of Your Long-Context Language Models?" COLM 2024. arXiv:2404.06654.
+20. Assad et al., "Can My Microservice Tolerate an Unreliable Database? Resilience Testing with Fault Injection and Visualization." ICSE-Companion 2024. arXiv:2404.01886.
+21. Yang et al., "SWE-smith: Scaling Data for Software Engineering Agents." NeurIPS 2025 D&B. arXiv:2504.21798.
+22. Liu et al., "ToolACE: Winning the Points of LLM Function Calling." ICLR 2025. arXiv:2409.00920.
 
 ## Reproducibility
 
