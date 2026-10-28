@@ -48,14 +48,14 @@ The agent never receives arbitrary SQL or unrestricted credentials. `telemetry_t
 
 | Tool (agent-facing function) | Purpose | Bounds enforced before the call |
 | --- | --- | --- |
-| `list_debug_cases_for_agent(limit, state)` | List the account's cases | `limit` 1..100; known `state` |
-| `fetch_case_logs_for_agent(case_id, limit)` | Read evidence for one case | UUID `case_id`; `limit` 1..100 |
-| `fetch_recent_client_logs_for_agent(limit, client_session_id)` | Recent client events | `limit` 1..100; optional session filter |
-| `request_instrumentation_for_agent(case_id, instructions, probes)` | Publish probes and instructions | <=20 probes; `probe_id` <=80 chars; `target` <=200; `level` in {info, warn, error}; `capture` an object |
-| `await_user_recheck_for_agent(case_id, instructions, probes)` | Ask the user to reproduce | Same probe bounds; probes optional |
-| `finalize_case_for_agent(case_id)` | Mark the proposed fix ready | Only from `rechecked` |
-| `abandon_case_for_agent(case_id)` | End the loop | Only from non-terminal states |
-| `cleanup_case_for_agent(case_id)` | Delete case telemetry, deactivate probes | Only from `approved` |
+| `list_debug_cases_for_agent(limit, state)` | List cases | `limit` 1..100; known `state` |
+| `fetch_case_logs_for_agent(case_id, limit)` | Read case logs | UUID `case_id`; `limit` 1..100 |
+| `fetch_recent_client_logs_for_agent(limit, client_session_id)` | Recent events | `limit` 1..100; optional session filter |
+| `request_instrumentation_for_agent(case_id, instructions, probes)` | Publish probes | <=20 probes; `probe_id` <=80 chars; `target` <=200; `level` in {info, warn, error}; `capture` an object |
+| `await_user_recheck_for_agent(case_id, instructions, probes)` | Request re-check | Same probe bounds; probes optional |
+| `finalize_case_for_agent(case_id)` | Mark fix ready | Only from `rechecked` |
+| `abandon_case_for_agent(case_id)` | End loop | Only from non-terminal states |
+| `cleanup_case_for_agent(case_id)` | Clean up | Only from `approved`; deletes telemetry and deactivates probes |
 
 Output is bounded as well as input. Detail objects are redacted recursively against a fixed set of sensitive keys (email, phone, token, password, authorization, access and refresh tokens, secret, ssn, credit card); free-text fields (title, user report, instructions, report, name) are scrubbed for e-mail addresses and long digit runs and truncated at 4000 characters; other strings are truncated; row count and total response size are capped (256 KB). These are defense-in-depth measures inside a narrow surface, not a privacy guarantee.
 
@@ -79,15 +79,15 @@ Table 2 gives the state machine, enforced twice in the Express layer and in the 
 
 | State | Meaning | Allowed next states |
 | --- | --- | --- |
-| `reported` | User reported a failure | `instrumenting`, `abandoned` |
-| `instrumenting` | Probes and instructions published | `awaiting_recheck`, `instrumenting`, `abandoned` |
-| `awaiting_recheck` | User asked to reproduce | `rechecked`, `instrumenting`, `abandoned` |
-| `rechecked` | User reported the outcome | `patch_ready`, `instrumenting`, `abandoned` |
-| `patch_ready` | Agent proposed a fix | `approved`, `rejected`, `instrumenting`, `abandoned` |
-| `approved` | User accepted the fix | `resolved` |
-| `rejected` | User refused the fix | `instrumenting`, `abandoned` |
+| `reported` | Failure reported | `instrumenting`, `abandoned` |
+| `instrumenting` | Probes published | `awaiting_recheck`, `instrumenting`, `abandoned` |
+| `awaiting_recheck` | Reproduction requested | `rechecked`, `instrumenting`, `abandoned` |
+| `rechecked` | Outcome reported | `patch_ready`, `instrumenting`, `abandoned` |
+| `patch_ready` | Fix proposed | `approved`, `rejected`, `instrumenting`, `abandoned` |
+| `approved` | Fix accepted | `resolved` |
+| `rejected` | Fix refused | `instrumenting`, `abandoned` |
 | `resolved` | Logs deleted, probes deactivated | none (terminal) |
-| `abandoned` | Loop ended without a fix | none (terminal) |
+| `abandoned` | Loop ended | none (terminal) |
 
 Two properties carry the contribution. **Runtime-selectable probes** decouple instrumentation from the deployment cycle, so diagnostic iterations do not require a new build and the baseline client emits nothing until a probe is active. **Reversible instrumentation** follows from probes being data rather than inlined source: they can be withdrawn deterministically when the case closes, which is what makes the cleanup step meaningful rather than aspirational.
 
