@@ -92,15 +92,41 @@ def apply_workspace_patch(unified_diff: str) -> str:
             name = name[2:]
         _workspace_file(name)
 
+    # Model-authored diffs usually omit the final newline and miscount hunk
+    # lines; git requires a newline-terminated patch, so normalize before use.
+    patch_text = unified_diff.rstrip("\r\n") + "\n"
     process = subprocess.run(
         ["git", "apply", "--whitespace=error", "-"],
-        input=unified_diff.rstrip("\r\n") + "\n",
+        input=patch_text,
         text=True,
         cwd=PATCH_WORKSPACE,
         capture_output=True,
         timeout=30,
         check=False,
     )
+    if process.returncode:
+        # --recount lets git recount hunk lines instead of failing the whole run.
+        process = subprocess.run(
+            ["git", "apply", "--recount", "--whitespace=error", "-"],
+            input=patch_text,
+            text=True,
+            cwd=PATCH_WORKSPACE,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+    if process.returncode:
+        # Model diffs are LF-only while checked-out sources may use CRLF, so
+        # context matching needs to ignore line-ending whitespace differences.
+        process = subprocess.run(
+            ["git", "apply", "--recount", "--ignore-whitespace", "--whitespace=error", "-"],
+            input=patch_text,
+            text=True,
+            cwd=PATCH_WORKSPACE,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
     if process.returncode:
         raise RuntimeError((process.stderr or "Patch application failed.")[:2000])
     return json.dumps({"applied": True, "files": file_headers})
@@ -112,6 +138,8 @@ def run_workspace_test(test_name: str) -> str:
         raise ValueError(f"Test must be one of: {', '.join(ALLOWED_TESTS)}")
     command, cwd_name = test
     cwd = PATCH_WORKSPACE if cwd_name == "." else PATCH_WORKSPACE / cwd_name
+    if not cwd.is_dir():
+        raise ValueError(f"Test '{test_name}' requires '{cwd_name}' inside the configured patch workspace.")
     process = subprocess.run(
         command,
         cwd=cwd,

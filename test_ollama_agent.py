@@ -49,6 +49,63 @@ class WorkspaceToolTests(unittest.TestCase):
         self.assertTrue(result["applied"])
         self.assertEqual(target.read_text(encoding="utf-8"), "value = 2\n")
 
+    def test_patch_recount_fallback_tolerates_miscounted_hunks(self):
+        target = self.workspace / "source.py"
+        target.write_text("value = 1\n", encoding="utf-8")
+        patch_text = (
+            "diff --git a/source.py b/source.py\n"
+            "--- a/source.py\n"
+            "+++ b/source.py\n"
+            "@@ -1,4 +1,4 @@\n"
+            "-value = 1\n"
+            "+value = 2\n"
+        )
+        ollama_agent.PATCH_ENABLED = True
+        result = json.loads(ollama_agent.apply_workspace_patch(patch_text))
+        self.assertTrue(result["applied"])
+        self.assertEqual(target.read_text(encoding="utf-8").replace("\r\n", "\n"), "value = 2\n")
+
+    def test_test_runner_requires_existing_workspace_directory(self):
+        ollama_agent.ALLOWED_TESTS["missing-dir"] = ([ollama_agent.sys.executable, "-c", "print(1)"], "not-there")
+        try:
+            with self.assertRaises(ValueError):
+                ollama_agent.run_workspace_test("missing-dir")
+        finally:
+            ollama_agent.ALLOWED_TESTS.pop("missing-dir", None)
+
+    def test_patch_without_trailing_newline_is_applied(self):
+        target = self.workspace / "source.py"
+        target.write_text("value = 1\n", encoding="utf-8")
+        patch_text = (
+            "diff --git a/source.py b/source.py\n"
+            "--- a/source.py\n"
+            "+++ b/source.py\n"
+            "@@ -1,4 +1,4 @@\n"
+            "-value = 1\n"
+            "+value = 2\n"
+        )
+        ollama_agent.PATCH_ENABLED = True
+        result = json.loads(ollama_agent.apply_workspace_patch(patch_text))
+        self.assertTrue(result["applied"])
+        self.assertEqual(target.read_text(encoding="utf-8").replace("\r\n", "\n"), "value = 2\n")
+
+    def test_patch_applies_to_crlf_file_with_lf_diff(self):
+        target = self.workspace / "source.py"
+        target.write_bytes(b"value = 1\r\nother = 2\r\n")
+        patch_text = (
+            "diff --git a/source.py b/source.py\n"
+            "--- a/source.py\n"
+            "+++ b/source.py\n"
+            "@@ -1,2 +1,2 @@\n"
+            "-value = 1\n"
+            "+value = 3\n"
+            " other = 2\n"
+        )
+        ollama_agent.PATCH_ENABLED = True
+        result = json.loads(ollama_agent.apply_workspace_patch(patch_text))
+        self.assertTrue(result["applied"])
+        self.assertEqual(target.read_bytes(), b"value = 3\r\nother = 2\r\n")
+
     def test_patch_rejects_new_files(self):
         ollama_agent.PATCH_ENABLED = True
         with self.assertRaises(ValueError):
