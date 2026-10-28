@@ -1,5 +1,11 @@
-"""Render the paired telemetry evaluation figure from the evaluation outputs."""
+"""Render the paired telemetry evaluation figure from the evaluation outputs.
 
+The figure compares condition A (no diagnostic events) with condition B
+(diagnostic events) for each repository variant: the compact application and
+the larger application with more plausible candidate modules.
+"""
+
+import argparse
 import json
 from pathlib import Path
 
@@ -11,8 +17,11 @@ import matplotlib.pyplot as plt
 
 ROOT = Path(__file__).resolve().parent
 RESULTS = ROOT.parent / "eval" / "results"
+RESULTS_LARGE = ROOT.parent / "eval" / "results_large"
 SUMMARY = RESULTS / "ab_summary.json"
 RUNS = RESULTS / "ab_runs.json"
+SUMMARY_LARGE = RESULTS_LARGE / "ab_summary.json"
+RUNS_LARGE = RESULTS_LARGE / "ab_runs.json"
 OUTPUT = ROOT / "figure_ab_results.png"
 
 INK = "#1e1b4b"
@@ -21,17 +30,17 @@ CONDITION_A = "#94a3b8"
 CONDITION_B = "#4f46e5"
 GRID = "#e2e8f0"
 
-WIDTH, HEIGHT = 10.4, 4.3
+WIDTH, HEIGHT = 12.6, 4.1
 DPI = 220
 
 
-def load():
-    if not SUMMARY.is_file():
-        raise SystemExit(f"Missing {SUMMARY}; run eval/eval_runner.py first.")
-    summary = json.loads(SUMMARY.read_text(encoding="utf-8"))
+def load(summary_path, runs_path):
+    if not summary_path.is_file():
+        return None, []
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
     runs = []
-    if RUNS.is_file():
-        runs = json.loads(RUNS.read_text(encoding="utf-8")).get("runs", [])
+    if runs_path.is_file():
+        runs = json.loads(runs_path.read_text(encoding="utf-8")).get("runs", [])
     return summary, runs
 
 
@@ -46,26 +55,16 @@ def paired_deltas(runs):
     return deltas
 
 
-def outcome_counts(summary, key_a, key_b):
+def outcome_panel(axis, summary, title):
     total = summary["pairs"] or 1
-    return summary[key_a] / total, summary[key_b] / total
-
-
-def build(summary, runs):
-    figure, axes = plt.subplots(1, 2, figsize=(WIDTH, HEIGHT), dpi=DPI, gridspec_kw={"width_ratios": [1.05, 1]})
-    figure.patch.set_facecolor("white")
-
-    left, right = axes
+    repair_a = summary["resolution"]["a_success"] / total
+    repair_b = summary["resolution"]["b_success"] / total
+    diagnosis_a = summary["diagnostic_accuracy"]["a_accurate"] / total
+    diagnosis_b = summary["diagnostic_accuracy"]["b_accurate"] / total
     labels = ["Repair (hidden test)", "Root cause (rubric)"]
-    repair_a, repair_b = outcome_counts(summary, "resolution", "a_success"), None
-    repair_a = summary["resolution"]["a_success"] / (summary["pairs"] or 1)
-    repair_b = summary["resolution"]["b_success"] / (summary["pairs"] or 1)
-    diagnosis_a = summary["diagnostic_accuracy"]["a_accurate"] / (summary["pairs"] or 1)
-    diagnosis_b = summary["diagnostic_accuracy"]["b_accurate"] / (summary["pairs"] or 1)
-
     positions = [0, 1]
     height = 0.34
-    left.barh(
+    axis.barh(
         [position + height / 2 + 0.02 for position in positions],
         [repair_a, diagnosis_a],
         height=height,
@@ -73,7 +72,7 @@ def build(summary, runs):
         label="A: no diagnostic events",
         zorder=3,
     )
-    left.barh(
+    axis.barh(
         [position - height / 2 - 0.02 for position in positions],
         [repair_b, diagnosis_b],
         height=height,
@@ -83,107 +82,113 @@ def build(summary, runs):
     )
     for position, values in ((0, (repair_a, repair_b)), (1, (diagnosis_a, diagnosis_b))):
         for offset, value in ((height / 2 + 0.02, values[0]), (-height / 2 - 0.02, values[1])):
-            left.text(
+            axis.text(
                 value + 0.015,
                 position + offset,
                 f"{value:.0%}",
                 va="center",
                 ha="left",
-                fontsize=8.4,
+                fontsize=8.2,
                 color=INK,
                 zorder=4,
             )
-    left.set_yticks(positions)
-    left.set_yticklabels(labels, fontsize=9, color=INK)
-    left.set_xlim(0, 1.18)
-    left.set_xticks([0, 0.25, 0.5, 0.75, 1.0])
-    left.set_xticklabels(["0", "25", "50", "75", "100%"], fontsize=8.2, color=MUTED)
-    left.set_xlabel("paired trials", fontsize=8.6, color=MUTED)
-    left.set_title(
-        f"Outcome rate over {summary['pairs']} paired trials",
-        fontsize=9.8,
-        color=INK,
-        weight="bold",
-        loc="left",
-        pad=8,
-    )
-    left.grid(axis="x", color=GRID, linewidth=0.8, zorder=0)
-    left.set_axisbelow(True)
+    axis.set_yticks(positions)
+    axis.set_yticklabels(labels, fontsize=8.8, color=INK)
+    axis.set_xlim(0, 1.2)
+    axis.set_xticks([0, 0.25, 0.5, 0.75, 1.0])
+    axis.set_xticklabels(["0", "25", "50", "75", "100%"], fontsize=8.0, color=MUTED)
+    axis.set_xlabel("paired trials", fontsize=8.4, color=MUTED)
+    axis.set_title(title, fontsize=9.6, color=INK, weight="bold", loc="left", pad=8)
+    axis.grid(axis="x", color=GRID, linewidth=0.8, zorder=0)
+    axis.set_axisbelow(True)
     for side in ("top", "right", "left"):
-        left.spines[side].set_visible(False)
-    left.spines["bottom"].set_color(GRID)
-    left.legend(fontsize=8.2, frameon=False, loc="lower right", labelcolor=MUTED)
+        axis.spines[side].set_visible(False)
+    axis.spines["bottom"].set_color(GRID)
 
-    deltas = paired_deltas(runs)
-    tokens = summary["token_delta_b_minus_a"]
-    if deltas:
+
+def token_panel(axis, entries):
+    offset = 0.0
+    labels = []
+    for title, summary, runs in entries:
+        deltas = paired_deltas(runs)
+        tokens = summary["token_delta_b_minus_a"]
+        if not deltas:
+            continue
         for index, delta in enumerate(deltas):
-            right.scatter(
+            axis.scatter(
                 delta,
-                index + 0.5,
-                s=26,
+                index + offset,
+                s=24,
                 color=CONDITION_B,
-                alpha=0.75,
+                alpha=0.7,
                 edgecolor="white",
-                linewidth=0.6,
+                linewidth=0.5,
                 zorder=3,
             )
-        right.axvline(0, color=MUTED, linewidth=1.0, linestyle=(0, (4, 3)), zorder=2)
+        axis.axvline(0, color=MUTED, linewidth=1.0, linestyle=(0, (4, 3)), zorder=2)
         if tokens["mean"] is not None:
-            right.axvspan(tokens["low"], tokens["high"], color=CONDITION_B, alpha=0.10, zorder=1)
-            right.axvline(tokens["mean"], color=CONDITION_B, linewidth=1.6, zorder=4)
-        right.set_ylim(0, len(deltas) + 1)
-        right.set_yticks([])
-        right.set_xlabel("tokens in B minus tokens in A", fontsize=8.6, color=MUTED)
-        right.set_title(
-            "Context cost per paired trial",
-            fontsize=9.8,
-            color=INK,
-            weight="bold",
-            loc="left",
-            pad=8,
-        )
-        if tokens["mean"] is not None:
-            right.text(
-                0.98,
-                0.94,
-                f"mean {tokens['mean']:+.0f}\n95% CI {tokens['low']:+.0f} to {tokens['high']:+.0f}",
-                transform=right.transAxes,
-                ha="right",
-                va="top",
-                fontsize=8.4,
-                color=INK,
-                zorder=5,
-            )
-    else:
-        right.text(
-            0.5,
-            0.5,
-            "no paired runs recorded",
-            transform=right.transAxes,
-            ha="center",
-            va="center",
-            fontsize=9,
-            color=MUTED,
-        )
-        right.set_axis_off()
+            axis.axvspan(tokens["low"], tokens["high"], color=CONDITION_B, alpha=0.08, zorder=1)
+            axis.axvline(tokens["mean"], color=CONDITION_B, linewidth=1.5, zorder=4)
+        labels.append((index + offset, title))
+        offset += len(deltas) + 1.5
+    if not labels:
+        axis.text(0.5, 0.5, "no paired runs recorded", transform=axis.transAxes, ha="center", va="center", fontsize=9, color=MUTED)
+        axis.set_axis_off()
+        return
+    axis.set_yticks([position for position, _ in labels])
+    axis.set_yticklabels([title for _, title in labels], fontsize=8.4, color=MUTED)
+    axis.set_ylim(-1, offset)
+    axis.set_xlabel("tokens in B minus tokens in A", fontsize=8.4, color=MUTED)
+    axis.set_title("Context cost per paired trial", fontsize=9.6, color=INK, weight="bold", loc="left", pad=8)
+    axis.grid(axis="x", color=GRID, linewidth=0.8, zorder=0)
+    axis.set_axisbelow(True)
+    for side in ("top", "right", "left"):
+        axis.spines[side].set_visible(False)
+    axis.spines["bottom"].set_color(GRID)
 
+
+def build(small, large):
+    figure, axes = plt.subplots(1, 3, figsize=(WIDTH, HEIGHT), dpi=DPI)
+    figure.patch.set_facecolor("white")
+
+    small_summary, small_runs = small
+    large_summary, large_runs = large
+
+    outcome_panel(
+        axes[0],
+        small_summary,
+        f"Compact repository ({small_summary['pairs']} paired trials)",
+    )
+    if large_summary:
+        outcome_panel(
+            axes[1],
+            large_summary,
+            f"Larger repository ({large_summary['pairs']} paired trials)",
+        )
+        entries = [("compact", small_summary, small_runs), ("larger", large_summary, large_runs)]
+    else:
+        axes[1].axis("off")
+        entries = [("compact", small_summary, small_runs)]
+    token_panel(axes[2], entries)
+
+    axes[0].legend(fontsize=8.0, frameon=False, loc="lower right", labelcolor=MUTED)
     for axis in axes:
-        axis.tick_params(colors=MUTED, labelsize=8.2)
+        axis.tick_params(colors=MUTED, labelsize=8.0)
+    model = small_summary.get("model", "local model")
     figure.suptitle(
-        f"Paired evaluation on {summary.get('model', 'local model')}: task-scoped telemetry vs. none",
+        f"Paired evaluation on {model}: task-scoped telemetry versus none",
         fontsize=10.4,
         color=INK,
         weight="bold",
-        x=0.012,
+        x=0.010,
         ha="left",
         y=0.985,
     )
     figure.text(
+        0.010,
         0.012,
-        0.015,
-        "Condition A and B share the prompt, tool surface, model and repository; only the case-scoped telemetry rows differ.",
-        fontsize=7.8,
+        "Both conditions share the prompt, tool surface, model and repository copy; only the case-scoped telemetry rows differ. Repair is decided by a held-out test the agent never sees.",
+        fontsize=7.6,
         color=MUTED,
         ha="left",
     )
@@ -205,12 +210,24 @@ def validate(figure, axes):
 
 
 def main():
-    summary, runs = load()
-    figure, axes = build(summary, runs)
+    parser = argparse.ArgumentParser(description="Render the paired evaluation figure")
+    parser.add_argument("--summary", default=str(SUMMARY))
+    parser.add_argument("--runs", default=str(RUNS))
+    parser.add_argument("--summary-large", default=str(SUMMARY_LARGE))
+    parser.add_argument("--runs-large", default=str(RUNS_LARGE))
+    parser.add_argument("--output", default=str(OUTPUT))
+    args = parser.parse_args()
+
+    small = load(Path(args.summary), Path(args.runs))
+    if small[0] is None:
+        raise SystemExit(f"Missing {args.summary}; run eval/eval_runner.py first.")
+    large = load(Path(args.summary_large), Path(args.runs_large))
+
+    figure, axes = build(small, large)
     problems = validate(figure, axes)
-    figure.savefig(OUTPUT, dpi=DPI, facecolor="white", bbox_inches="tight", pad_inches=0.12)
+    figure.savefig(args.output, dpi=DPI, facecolor="white", bbox_inches="tight", pad_inches=0.12)
     plt.close(figure)
-    print(f"Created {OUTPUT}")
+    print(f"Created {args.output}")
     for problem in problems:
         print(f"LAYOUT WARNING: {problem}")
     if problems:
