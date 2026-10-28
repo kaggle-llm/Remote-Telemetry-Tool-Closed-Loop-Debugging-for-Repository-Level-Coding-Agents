@@ -1,0 +1,171 @@
+{
+  "tasks": [
+    {
+      "task_id": "t1_palette_presentation_context",
+      "title": "Highlight palette does not open",
+      "report": "After selecting a passage, tapping the colour button in the annotation bar does nothing: no colour swatches appear and the toolbar keeps the old state. It happens on every device we tried.",
+      "expected_root_cause": "open_palette ignores the presentation context it was created with and returns False whenever the caller supplies none, so the palette is never presented.",
+      "adjudication_key": ["presentation context", "missing presentation context", "context fallback", "bound presentation context", "view context"],
+      "target_module": "app/ui/palette.py",
+      "distractor_modules": ["app/ui/selection.py", "app/ui/theme.py"],
+      "validation_test": "tests.test_validation.PaletteValidation.test_palette_opens_with_presentation_context",
+      "telemetry_events": [
+        {
+          "level": "error",
+          "event": "highlight_palette_presentation_failed",
+          "detail": {
+            "view": "HighlightPaletteView",
+            "presentation_context": null,
+            "app_version": "1.2.0",
+            "os_version": "iOS 18"
+          }
+        }
+      ],
+      "reference_fix": {
+        "file": "app/ui/palette.py",
+        "old": "        if context is None:\n            return False\n        self._open = True\n",
+        "new": "        context = context if context is not None else self._context\n        self._open = True\n"
+      }
+    },
+    {
+      "task_id": "t2_imageloader_request_timeout",
+      "title": "Cover images never finish loading",
+      "report": "The cover thumbnails in the library stay grey placeholders and never turn into pictures, while the rest of the screen keeps working. The problem is much stronger on a slow connection.",
+      "expected_root_cause": "ImageLoader.load collapses a missing per-request timeout into a zero millisecond deadline, so the transport is asked for a download without any timeout.",
+      "adjudication_key": ["request timeout", "zero timeout", "missing timeout", "unbounded request", "no timeout"],
+      "target_module": "app/net/imageloader.py",
+      "distractor_modules": ["app/net/cache.py"],
+      "validation_test": "tests.test_validation.ImageLoaderValidation.test_image_download_uses_a_bounded_timeout",
+      "telemetry_events": [
+        {
+          "level": "warn",
+          "event": "image_download_started",
+          "detail": {
+            "url": "https://cdn.example.test/cover-42.png",
+            "timeout_ms": 0,
+            "request_timeout_ms": null,
+            "loader_timeout_ms": 3000,
+            "cache_hit": false
+          }
+        }
+      ],
+      "reference_fix": {
+        "file": "app/net/imageloader.py",
+        "old": "        timeout_ms = request.timeout_ms or 0\n",
+        "new": "        timeout_ms = request.timeout_ms if request.timeout_ms is not None else self._timeout_ms\n"
+      }
+    },
+    {
+      "task_id": "t3_anchor_page_out_of_range",
+      "title": "Reopening a document lands on an empty page",
+      "report": "Reopening a long document sometimes lands on an empty page instead of the paragraph that was open before. It only happens after the text has been laid out again, for example when the screen size changed.",
+      "expected_root_cause": "AnchorStore.restore accepts an anchor whose page is exactly the page count because the range check compares with a strict inequality instead of rejecting the first page outside the document.",
+      "adjudication_key": ["page count", "page bounds", "off by one", "anchor page range", "page out of range"],
+      "target_module": "app/reader/anchor.py",
+      "distractor_modules": ["app/reader/pagination.py"],
+      "validation_test": "tests.test_validation.AnchorValidation.test_anchor_on_a_missing_page_is_rejected",
+      "telemetry_events": [
+        {
+          "level": "error",
+          "event": "reading_anchor_restored",
+          "detail": {
+            "document_id": "doc-42",
+            "stored_page": 12,
+            "page_count": 12,
+            "anchor_offset": 0,
+            "rendered_page": null
+          }
+        }
+      ],
+      "reference_fix": {
+        "file": "app/reader/anchor.py",
+        "old": "        if anchor.page > page_count:\n            return None\n",
+        "new": "        if anchor.page >= page_count:\n            return None\n"
+      }
+    },
+    {
+      "task_id": "t4_retry_idempotency_key",
+      "title": "Notes are duplicated after a sync error",
+      "report": "After the app reports that it could not reach the server, some notes exist twice in the shared library. The duplicates show up right after such an error and never when the connection is stable.",
+      "expected_root_cause": "RetryRunner.run replays an operation that carries no idempotency key, so one transient failure produces the same write several times on the server.",
+      "adjudication_key": ["idempotency key", "duplicate write", "replay without a key", "non idempotent retry", "unsafe replay"],
+      "target_module": "app/sync/retry.py",
+      "distractor_modules": ["app/sync/queue.py"],
+      "validation_test": "tests.test_validation.RetryValidation.test_operation_without_idempotency_key_is_not_retried",
+      "telemetry_events": [
+        {
+          "level": "error",
+          "event": "sync_write_retried",
+          "detail": {
+            "operation": "upsert_note",
+            "attempt_count": 3,
+            "idempotency_key": null,
+            "duplicate_records": 2,
+            "server_status": 503
+          }
+        }
+      ],
+      "reference_fix": {
+        "file": "app/sync/retry.py",
+        "old": "        last_error: SyncError | None = None\n        for attempt in range(1, self._policy.attempts + 1):\n",
+        "new": "        if idempotency_key is None:\n            return operation()\n        last_error: SyncError | None = None\n        for attempt in range(1, self._policy.attempts + 1):\n"
+      }
+    },
+    {
+      "task_id": "t5_auth_cache_stale_entry",
+      "title": "The app asks for a new sign in during a session",
+      "report": "Users are asked to sign in again in the middle of a session even though they signed in a moment ago. Signing in again works, but the request that follows the prompt is rejected as not authorised.",
+      "expected_root_cause": "CredentialCache.get hands out cached credentials without comparing the entry age against the time to live, so an entry that is already stale is still served.",
+      "adjudication_key": ["time to live", "ttl", "stale credential", "expired credential", "cache lifetime"],
+      "target_module": "app/auth/cache.py",
+      "distractor_modules": ["app/auth/token.py"],
+      "validation_test": "tests.test_validation.CredentialCacheValidation.test_expired_credential_is_not_served",
+      "telemetry_events": [
+        {
+          "level": "warn",
+          "event": "credential_cache_hit",
+          "detail": {
+            "scope": "drive.read",
+            "cache_age_ms": 900000,
+            "ttl_ms": 300000,
+            "token_expires_in_ms": -600000,
+            "response_status": 401
+          }
+        }
+      ],
+      "reference_fix": {
+        "file": "app/auth/cache.py",
+        "old": "        entry = self._entries.get(scope)\n        if entry is None:\n            return None\n        return entry.credential\n",
+        "new": "        entry = self._entries.get(scope)\n        if entry is None:\n            return None\n        if self._clock() - entry.stored_at >= self._ttl_ms:\n            del self._entries[scope]\n            return None\n        return entry.credential\n"
+      }
+    },
+    {
+      "task_id": "t6_media_player_decoder_error",
+      "title": "Playback keeps running but no sound is produced",
+      "report": "After switching to the next track the app keeps showing the playing indicator, but no sound comes out and the position never moves. Closing and reopening the app makes the same track play again.",
+      "expected_root_cause": "MediaPlayer.play marks the player as playing before the decoder accepts the command and swallows the decoder failure, so the player reports playback that never started.",
+      "adjudication_key": ["decoder error", "decoder failure", "swallowed exception", "playback state", "state before starting"],
+      "target_module": "app/media/player.py",
+      "distractor_modules": ["app/media/playlist.py"],
+      "validation_test": "tests.test_validation.MediaPlayerValidation.test_refused_decoder_leaves_the_player_stopped",
+      "telemetry_events": [
+        {
+          "level": "error",
+          "event": "playback_state_mismatch",
+          "detail": {
+            "track_id": "track-9",
+            "player_state": "playing",
+            "decoder_state": "idle",
+            "decoder_error_code": "DECODER_UNAVAILABLE",
+            "position_ms": 0
+          }
+        }
+      ],
+      "reference_fix": {
+        "file": "app/media/player.py",
+        "old": "        self._state = PlaybackState.PLAYING\n        try:\n            self._decoder.start()\n        except DecoderError:\n            return False\n",
+        "new": "        try:\n            self._decoder.start()\n        except DecoderError as error:\n            self._state = PlaybackState.STOPPED\n            self._last_error = str(error)\n            return False\n        self._state = PlaybackState.PLAYING\n"
+      }
+    }
+  ]
+}
