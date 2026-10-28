@@ -15,8 +15,10 @@
       "resolution_success": false,
       "public_tests_passed": true,
       "validation_test": "tests.test_validation.MediaPlayerValidation.test_refused_decoder_leaves_the_player_stopped",
-      "diagnostic_accurate": false,
-      "matched_phrases": [],
+      "diagnostic_accurate": true,
+      "matched_phrases": [
+        "playback state"
+      ],
       "module_mentioned": true,
       "root_cause_statement": "The MediaPlayer failed to properly reset its internal state and the underlying decoder when `play()` was called after a track switch, causing the playback indicator to remain active while the decoder was not initialized for the new track.",
       "tool_call_count": 5,
@@ -116,7 +118,8 @@
       "validation_test": "tests.test_validation.AnchorValidation.test_anchor_on_a_missing_page_is_rejected",
       "diagnostic_accurate": true,
       "matched_phrases": [
-        "page count"
+        "page count",
+        "page bounds"
       ],
       "module_mentioned": true,
       "root_cause_statement": "The `AnchorStore.restore` method incorrectly used a strict greater-than comparison (`>`) when checking if a stored anchor's page number exceeded the current document's page count, allowing anchors pointing to an out-of-bounds page index to be returned.",
@@ -190,7 +193,8 @@
       "validation_test": "tests.test_validation.AnchorValidation.test_anchor_on_a_missing_page_is_rejected",
       "diagnostic_accurate": true,
       "matched_phrases": [
-        "page count"
+        "page count",
+        "page bounds"
       ],
       "module_mentioned": true,
       "root_cause_statement": "The anchor restoration logic incorrectly used a strict greater-than comparison (`>`) against the total page count, allowing anchors pointing to a page index equal to the total page count (which is out of bounds for zero-indexed pages) to be returned.",
@@ -238,8 +242,10 @@
       "resolution_success": false,
       "public_tests_passed": true,
       "validation_test": "tests.test_validation.CredentialCacheValidation.test_expired_credential_is_not_served",
-      "diagnostic_accurate": false,
-      "matched_phrases": [],
+      "diagnostic_accurate": true,
+      "matched_phrases": [
+        "stale credential"
+      ],
       "module_mentioned": true,
       "root_cause_statement": "The credential cache lacked thread safety, allowing race conditions to cause lost updates when a token was refreshed and replaced, leading to subsequent requests using stale or missing authorization tokens.",
       "tool_call_count": 7,
@@ -262,8 +268,10 @@
       "resolution_success": true,
       "public_tests_passed": true,
       "validation_test": "tests.test_validation.ImageLoaderValidation.test_image_download_uses_a_bounded_timeout",
-      "diagnostic_accurate": false,
-      "matched_phrases": [],
+      "diagnostic_accurate": true,
+      "matched_phrases": [
+        "no timeout"
+      ],
       "module_mentioned": true,
       "root_cause_statement": "The ImageLoader defaulted to a timeout of 0 when an ImageRequest did not specify a timeout, causing downloads to fail or hang indefinitely on slow connections.",
       "tool_call_count": 6,
@@ -336,8 +344,10 @@
       "resolution_success": true,
       "public_tests_passed": true,
       "validation_test": "tests.test_validation.ImageLoaderValidation.test_image_download_uses_a_bounded_timeout",
-      "diagnostic_accurate": false,
-      "matched_phrases": [],
+      "diagnostic_accurate": true,
+      "matched_phrases": [
+        "no timeout"
+      ],
       "module_mentioned": true,
       "root_cause_statement": "The ImageLoader defaulted to a 0ms timeout when no specific timeout was provided in the ImageRequest, causing immediate failures on slow network connections.",
       "tool_call_count": 5,
@@ -386,8 +396,10 @@
       "resolution_success": false,
       "public_tests_passed": true,
       "validation_test": "tests.test_validation.MediaPlayerValidation.test_refused_decoder_leaves_the_player_stopped",
-      "diagnostic_accurate": false,
-      "matched_phrases": [],
+      "diagnostic_accurate": true,
+      "matched_phrases": [
+        "playback state"
+      ],
       "module_mentioned": false,
       "root_cause_statement": "The playlist's index tracking was not robustly updated when the currently playing track was moved, leading to an inconsistent state that prevented subsequent track switching from advancing playback correctly.",
       "tool_call_count": 6,
@@ -413,7 +425,8 @@
       "diagnostic_accurate": true,
       "matched_phrases": [
         "time to live",
-        "ttl"
+        "ttl",
+        "expired credential"
       ],
       "module_mentioned": true,
       "root_cause_statement": "The CredentialCache failed to enforce its Time To Live (TTL) because the `get` method did not check if the stored credential had expired.",
@@ -562,8 +575,10 @@
       "resolution_success": true,
       "public_tests_passed": true,
       "validation_test": "tests.test_validation.ImageLoaderValidation.test_image_download_uses_a_bounded_timeout",
-      "diagnostic_accurate": false,
-      "matched_phrases": [],
+      "diagnostic_accurate": true,
+      "matched_phrases": [
+        "no timeout"
+      ],
       "module_mentioned": true,
       "root_cause_statement": "The ImageLoader defaulted to a 0ms timeout when no specific timeout was provided in the ImageRequest, causing immediate failures on slow network connections.",
       "tool_call_count": 5,
@@ -612,6 +627,7 @@
       "validation_test": "tests.test_validation.ImageLoaderValidation.test_image_download_uses_a_bounded_timeout",
       "diagnostic_accurate": true,
       "matched_phrases": [
+        "request timeout",
         "no timeout"
       ],
       "module_mentioned": true,
@@ -638,7 +654,8 @@
       "validation_test": "tests.test_validation.AnchorValidation.test_anchor_on_a_missing_page_is_rejected",
       "diagnostic_accurate": true,
       "matched_phrases": [
-        "page count"
+        "page count",
+        "page bounds"
       ],
       "module_mentioned": true,
       "root_cause_statement": "The anchor restoration logic incorrectly allowed anchors pointing to a page index equal to the total page count, which is out of bounds for zero-indexed pagination.",
@@ -686,8 +703,10 @@
       "resolution_success": true,
       "public_tests_passed": true,
       "validation_test": "tests.test_validation.ImageLoaderValidation.test_image_download_uses_a_bounded_timeout",
-      "diagnostic_accurate": false,
-      "matched_phrases": [],
+      "diagnostic_accurate": true,
+      "matched_phrases": [
+        "no timeout"
+      ],
       "module_mentioned": true,
       "root_cause_statement": "The ImageLoader defaulted to a 0ms timeout when no explicit timeout was provided in the ImageRequest, causing network requests to fail instantly on slow connections.",
       "tool_call_count": 6,
@@ -784,8 +803,10 @@
       "resolution_success": false,
       "public_tests_passed": true,
       "validation_test": "tests.test_validation.MediaPlayerValidation.test_refused_decoder_leaves_the_player_stopped",
-      "diagnostic_accurate": false,
-      "matched_phrases": [],
+      "diagnostic_accurate": true,
+      "matched_phrases": [
+        "playback state"
+      ],
       "module_mentioned": true,
       "root_cause_statement": "The MediaPlayer was not defensively resetting its internal state (stopping the previous stream) before attempting to start playback for a new track, leading to the decoder failing to advance or produce sound.",
       "tool_call_count": 6,
@@ -808,8 +829,10 @@
       "resolution_success": true,
       "public_tests_passed": true,
       "validation_test": "tests.test_validation.MediaPlayerValidation.test_refused_decoder_leaves_the_player_stopped",
-      "diagnostic_accurate": false,
-      "matched_phrases": [],
+      "diagnostic_accurate": true,
+      "matched_phrases": [
+        "playback state"
+      ],
       "module_mentioned": true,
       "root_cause_statement": "The MediaPlayer incorrectly maintained a PLAYING state even when the underlying decoder failed to start playback, leading to a stuck indicator and no audio output.",
       "tool_call_count": 8,
