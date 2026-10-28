@@ -61,11 +61,15 @@ Output is bounded as well as input. Detail objects are redacted recursively agai
 
 Tool output is untrusted diagnostic data: log strings can contain secrets or prompt-injection text, so the agent must treat retrieved events as evidence, never instructions. Every call is authenticated by key and scoped to one account, and the model cannot widen that scope because filters are validated and ownership re-checked server-side.
 
+Figure 1 shows the surface the agent can reach and the boundary it cannot cross.
+
+![Figure 1: Trust boundaries between the agent and the server.](figure_trust_boundaries.png)
+
 ### 3.4 The closed debugging loop
 
 Read access alone does not close the loop: an agent can observe an event but cannot ask the device for better evidence, cannot know whether the reproduction attempt succeeded, and cannot verify that a patch fixed the symptom. The protocol is therefore bidirectional, stateful, and human-in-the-loop.
 
-![Figure 1: The closed debugging loop.](figure_closed_loop.png)
+![Figure 2: The closed debugging loop.](figure_closed_loop.png)
 
 1. **Report.** The client creates a `debug_cases` row with the failure title and the user's own description. No telemetry is captured by default.
 2. **Instrument.** The agent publishes probes (`probe_id`, `target`, bounded `capture` object, `level`) plus instructions; the client applies them at runtime and links every resulting event to the case, so evidence is scoped to one attempt.
@@ -88,6 +92,10 @@ Table 2 gives the state machine, enforced twice in the Express layer and in the 
 | `rejected` | Fix refused | `instrumenting`, `abandoned` |
 | `resolved` | Cleaned up | none (terminal) |
 | `abandoned` | Ended | none (terminal) |
+
+Figure 3 draws the same machine as a transition graph, including the returns to `instrumenting` and the terminal states.
+
+![Figure 3: The server-enforced case state machine.](figure_state_machine.png)
 
 Two properties carry the contribution. **Runtime-selectable probes** decouple instrumentation from the deployment cycle, so diagnostic iterations do not require a new build and the baseline client emits nothing until a probe is active. **Reversible instrumentation** follows from probes being data rather than inlined source: they can be withdrawn when the case closes, which is what makes the cleanup step meaningful rather than aspirational.
 
