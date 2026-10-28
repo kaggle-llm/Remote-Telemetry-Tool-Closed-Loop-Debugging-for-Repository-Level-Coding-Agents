@@ -66,6 +66,7 @@ def prepare_workspace(fixtures_dir: Path, destination: Path):
     shutil.copytree(
         fixtures_dir / "repo",
         destination,
+        dirs_exist_ok=True,
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
     )
     hidden = destination / "tests" / "test_validation.py"
@@ -139,6 +140,10 @@ def normalize(text: str) -> str:
     return NON_ALNUM.sub(" ", (text or "").lower()).strip()
 
 
+def normalize_compact(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", (text or "").lower())
+
+
 def adjudicate(task, answer: str):
     """Rule-based, condition-blind adjudication against the frozen answer key."""
     lines = [line.strip() for line in (answer or "").splitlines()]
@@ -150,13 +155,20 @@ def adjudicate(task, answer: str):
     root_cause_text = " ".join(root_cause_lines)
     body = normalize(answer)
     claim = normalize(root_cause_text) if root_cause_text else ""
+    compact_claim = normalize_compact(root_cause_text) if root_cause_text else ""
     keys = [normalize(phrase) for phrase in task.get("adjudication_key", []) if normalize(phrase)]
-    matched = [phrase for phrase in keys if phrase in claim]
+    matched = [
+        phrase for phrase in keys
+        if phrase in claim or normalize_compact(phrase) in compact_claim
+    ]
     if not matched and not root_cause_text:
         matched = [phrase for phrase in keys if phrase in body]
+    module_stem = Path(task.get("target_module", "")).stem.lower()
+    module_mentioned = bool(module_stem) and module_stem in normalize(answer).replace(" ", "")
     return {
         "diagnostic_accurate": bool(matched),
         "matched_phrases": matched,
+        "module_mentioned": module_mentioned,
         "root_cause_statement": root_cause_text[:600],
     }
 
@@ -211,6 +223,7 @@ def run_trial(task, condition, repeat, fixtures_dir, validation_file, client, mo
         "validation_test": task["validation_test"],
         "diagnostic_accurate": adjudication["diagnostic_accurate"],
         "matched_phrases": adjudication["matched_phrases"],
+        "module_mentioned": adjudication["module_mentioned"],
         "root_cause_statement": adjudication["root_cause_statement"],
         "tool_call_count": transcript["tool_call_count"],
         "tool_errors": transcript["tool_errors"],
@@ -264,6 +277,9 @@ def summarize(runs, seed):
     diagnostic_a_only = sum(1 for pair in both if pair["A"]["diagnostic_accurate"] and not pair["B"]["diagnostic_accurate"])
     diagnostic_both = sum(1 for pair in both if pair["A"]["diagnostic_accurate"] and pair["B"]["diagnostic_accurate"])
 
+    localization_b_only = sum(1 for pair in both if pair["B"].get("module_mentioned") and not pair["A"].get("module_mentioned"))
+    localization_a_only = sum(1 for pair in both if pair["A"].get("module_mentioned") and not pair["B"].get("module_mentioned"))
+
     token_deltas = [pair["B"]["total_tokens"] - pair["A"]["total_tokens"] for pair in both]
     duration_deltas = [pair["B"]["duration_seconds"] - pair["A"]["duration_seconds"] for pair in both]
 
@@ -294,6 +310,13 @@ def summarize(runs, seed):
             "b_only": diagnostic_b_only,
             "a_only": diagnostic_a_only,
             "mcnemar_exact_p": mcnemar_exact(diagnostic_b_only, diagnostic_a_only),
+        },
+        "localization": {
+            "a_mentioned": sum(1 for pair in both if pair["A"].get("module_mentioned")),
+            "b_mentioned": sum(1 for pair in both if pair["B"].get("module_mentioned")),
+            "b_only": localization_b_only,
+            "a_only": localization_a_only,
+            "mcnemar_exact_p": mcnemar_exact(localization_b_only, localization_a_only),
         },
         "token_delta_b_minus_a": bootstrap_mean_ci(token_deltas, seed),
         "duration_delta_b_minus_a": bootstrap_mean_ci(duration_deltas, seed),
@@ -326,11 +349,13 @@ def write_markdown(summary, path: Path, model, seed, repeats):
         "| --- | --- | --- |",
         f"| Validation test passed | {resolution['a_success']}/{summary['pairs']} | {resolution['b_success']}/{summary['pairs']} |",
         f"| Root cause matched rubric | {diagnostic['a_accurate']}/{summary['pairs']} | {diagnostic['b_accurate']}/{summary['pairs']} |",
+        f"| Named the responsible module | {summary['localization']['a_mentioned']}/{summary['pairs']} | {summary['localization']['b_mentioned']}/{summary['pairs']} |",
         f"| Telemetry fetches | {summary['telemetry_fetches']['a']} | {summary['telemetry_fetches']['b']} |",
         f"| File edits | {summary['edits']['a']} | {summary['edits']['b']} |",
         "",
         f"- discordant repair pairs: B only {resolution['b_only']}, A only {resolution['a_only']}, exact McNemar p = {resolution['mcnemar_exact_p']:.3f}",
         f"- discordant diagnosis pairs: B only {diagnostic['b_only']}, A only {diagnostic['a_only']}, exact McNemar p = {diagnostic['mcnemar_exact_p']:.3f}",
+        f"- discordant localization pairs: B only {summary['localization']['b_only']}, A only {summary['localization']['a_only']}, exact McNemar p = {summary['localization']['mcnemar_exact_p']:.3f}",
         f"- token delta (B - A): {tokens['mean']:.1f} (95% bootstrap CI {tokens['low']:.1f} to {tokens['high']:.1f})",
         "",
         "| Task | Pairs | A repaired | B repaired | A diagnosed | B diagnosed |",

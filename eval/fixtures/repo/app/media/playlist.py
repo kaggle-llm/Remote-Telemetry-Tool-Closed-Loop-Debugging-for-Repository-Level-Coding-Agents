@@ -48,12 +48,21 @@ class Playlist:
         return self._tracks[self._index]
 
     def move(self, track_id: str, position: int) -> bool:
-        """Move a track to ``position``, reporting whether it was found."""
+        """Move a track to ``position``, reporting whether it was found.
+
+        The track that is playing keeps playing after the move.
+        """
         if position < 0 or position >= len(self._tracks):
             return False
-        for current, track in enumerate(self._tracks):
-            if track.track_id == track_id:
-                self._tracks.pop(current)
-                self._tracks.insert(position, track)
-                return True
+        playing = self.current
+        for index, track in enumerate(self._tracks):
+            if track.track_id != track_id:
+                continue
+            self._tracks.pop(index)
+            self._tracks.insert(position, track)
+            if playing is not None:
+                self._index = next(
+                    slot for slot, item in enumerate(self._tracks) if item.track_id == playing.track_id
+                )
+            return True
         return False

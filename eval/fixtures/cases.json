@@ -157,7 +157,7 @@
             "player_state": "playing",
             "decoder_state": "idle",
             "decoder_error_code": "DECODER_UNAVAILABLE",
-            "position_ms": 0
+            "elapsed_ms": 0
           }
         }
       ],

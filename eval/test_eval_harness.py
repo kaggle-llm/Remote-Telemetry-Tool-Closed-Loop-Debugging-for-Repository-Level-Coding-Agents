@@ -153,6 +153,19 @@ class AdjudicationTests(unittest.TestCase):
         result = adjudicate(task, answer)
         self.assertFalse(result["diagnostic_accurate"])
 
+    def test_compound_identifier_matches_the_key_phrase(self):
+        task = {"adjudication_key": ["presentation context"], "target_module": "app/ui/palette.py"}
+        answer = "ROOT_CAUSE: open_palette requires an explicit PresentationContext"
+        result = adjudicate(task, answer)
+        self.assertTrue(result["diagnostic_accurate"])
+        self.assertTrue(result["module_mentioned"])
+
+    def test_module_localization_is_reported(self):
+        task = {"adjudication_key": ["timeout"], "target_module": "app/net/imageloader.py"}
+        answer = "ROOT_CAUSE: the imageloader never applies a timeout"
+        result = adjudicate(task, answer)
+        self.assertTrue(result["module_mentioned"])
+
 
 class StatisticsTests(unittest.TestCase):
     def test_mcnemar_exact_cases(self):
