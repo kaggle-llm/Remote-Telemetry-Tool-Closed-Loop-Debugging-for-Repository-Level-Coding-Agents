@@ -28,7 +28,7 @@ We did not run a systematic literature survey; the references below are represen
 
 *Interleaved reasoning, acting, and open-weight models.* ReAct [4] established the pattern of interleaving reasoning traces with tool actions, the pattern our protocol instantiates for telemetry access, and Google ADK [5] provides the orchestration and function-calling machinery such a protocol would be hosted in. Gemma 4 [6] spans 2.3B to 31B parameters with native function calling and on-device-oriented small variants, so context economy is a first-order concern; that motivates bounded, case-scoped retrieval instead of broad log search.
 
-*Data plane and gap.* Row Level Security and Postgres function privileges are the standard way to restrict who may read which rows [7, 8]; we apply the same idea one level up, giving the agent a narrow tool surface while the database enforces ownership per case. Our contribution is not the event format, which is established observability practice, but the closed protocol around it and its reversibility. We are not aware of work that treats the end user's device as an explicit participant in an agentic debugging loop, with a server-enforced protocol that separates evidence collection from repair validation and guarantees that instrumentation can be withdrawn. That protocol, and a test of whether it helps, is what this artifact proposes.
+*Data plane and gap.* Row Level Security and Postgres function privileges are the standard way to restrict who may read which rows [7, 8]; we apply the same idea one level up, giving the agent a narrow tool surface while the database enforces ownership per case. Our contribution is not the event format, which is established observability practice, but the closed protocol around it and its reversibility: we are not aware of work that treats the end user's device as an explicit participant in an agentic debugging loop, with a server-enforced protocol that separates evidence collection from repair validation and guarantees that instrumentation can be withdrawn. That protocol, and a test of whether it helps, is what this artifact proposes.
 
 ## 3. System Design and Method
 
@@ -122,7 +122,7 @@ The artifact is a five-part stack.
 
 *Dashboard and agent.* `web_demo/src/main.js` is a Vite dashboard for Google sign-in, key and session management, case listing, probe inspection, re-check feedback, and approval; all data comes from the backend. `ollama_agent.py` exposes the protocol as OpenAI-compatible function tools for an Ollama-hosted agent, with workspace read, patch, and test tools, and `eval/eval_runner.py` is a read-only pilot harness.
 
-The device side is specified in `IOS_HIGHLIGHT_SCENARIO.md` and exercised by `ai_client_demo/debug_loop_demo.py`, a scripted client that drives the loop against a running backend. A production iOS client with a probe runtime is not part of this artifact, so the "client applies the probes" step is specified and scripted, not shipped on device.
+The device side is specified in `IOS_HIGHLIGHT_SCENARIO.md` and exercised by `ai_client_demo/debug_loop_demo.py`, a scripted client that drives the loop against a running backend. A production iOS client with a probe runtime is not part of this artifact, so the "client applies the probes" step is scripted, not shipped on device.
 
 ## 5. Experiments and Evaluation Protocol
 
