@@ -71,7 +71,7 @@ Read access alone does not close the loop: an agent can observe an event but can
 2. **Instrument.** The agent publishes probes (`probe_id`, `target`, bounded `capture` object, `level`) plus instructions; the client applies them at runtime and links every resulting event to the case, so evidence is scoped to one attempt.
 3. **Await re-check.** The agent tells the user what to try and the case moves to `awaiting_recheck`; the client polls case state with a version counter, so no push infrastructure is required.
 4. **Re-check.** The client reports its outcome through `report_case_progress`, which appends a bounded entry to `case_reports` and moves the case to `rechecked`; a dedicated timeline table keeps repeated re-checks from overflowing the original 4000-character report column.
-5. **Analyze and patch.** The agent reads only case-scoped evidence, separates observation from inference, inspects the repository, and proposes a minimal patch. Without a faithful client test it reports that limitation instead of claiming the remote issue is fixed.
+5. **Analyze and patch.** The agent reads only case-scoped evidence, separates observation from inference, inspects the repository, and proposes a minimal patch. Without a faithful client test, the agent reports that limitation instead of claiming the remote issue is fixed.
 6. **Finalize.** The agent calls `finalize_case`, moving the case to `patch_ready`; it cannot skip this state and cannot approve on the user's behalf.
 7. **Approve and clean up.** The user approves or rejects through `approve_case`. Only after approval may the agent call `cleanup_case`, which deletes the case's telemetry, deactivates its probes so the device stops collecting, and marks the case `resolved`.
 
@@ -105,7 +105,7 @@ The agent retrieves only events authorized for that case, searches the repositor
 
 ## 4. Implementation
 
-The artifact has five parts.
+The artifact has five implementation parts.
 
 *Agent tool library.* `telemetry_tool.py` is a thin Python client that validates arguments (UUIDs, limits, probe shapes), posts to the management API, and returns JSON strings. It never receives a Supabase key: keys come from the environment, and session keys are hidden from model-visible output.
 
