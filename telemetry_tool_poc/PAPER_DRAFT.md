@@ -2,7 +2,7 @@
 
 ## Abstract
 
-Repository-level coding agents can read source code and run local tests, but they cannot observe failures on a user's remote device. We present **Remote Telemetry Tool**, a prototype architecture that gives a coding agent task-scoped client telemetry and closes the loop between diagnosis, repair, and device-side verification. It combines bounded, redacted event retrieval; a server-enforced case state machine that the agent cannot skip and cannot approve on the user's behalf; and runtime-selectable instrumentation probes published as data and withdrawn deterministically at cleanup, so a client emits nothing until an agent asks for evidence. The artifact contains a Python tool library, a Supabase schema with security-definer RPCs, a custom Google OAuth backend, a dashboard, an Ollama-compatible agent runner, and a read-only evaluation harness. Verification is limited to 54 local unit tests (all passing) over mocked tool behavior, redaction, and state-machine rules, which establish neither deployment security nor end-to-end reliability. An earlier three-task run is invalid for efficacy claims because it reused live case identifiers, allowed state-mutating calls, and used unadjudicated heuristics, so we report no benefit. We contribute the protocol, its safety boundary, and a preregistered paired evaluation.
+Repository-level coding agents can read source code and run local tests, but they cannot observe failures on a user's remote device. We present **Remote Telemetry Tool**, a prototype architecture that gives a coding agent task-scoped client telemetry and closes the loop between diagnosis, repair, and device-side verification. It combines bounded, redacted event retrieval; a server-enforced case state machine that the agent cannot skip and cannot approve on the user's behalf; and runtime-selectable instrumentation probes published as data and withdrawn at cleanup, so a client emits nothing until an agent asks for evidence. The artifact contains a Python tool library, a Supabase schema with security-definer RPCs, a custom Google OAuth backend, a dashboard, an Ollama-compatible agent runner, and a read-only evaluation harness. Verification is limited to 54 local unit tests (all passing) over mocked tool behavior, redaction, and state-machine rules, which establish neither deployment security nor end-to-end reliability. An earlier three-task run is invalid for efficacy claims because it reused live case identifiers, allowed state-mutating calls, and used unadjudicated heuristics, so we report no benefit. We contribute the protocol, its safety boundary, and a preregistered paired evaluation.
 
 ## 1. Introduction
 
@@ -15,7 +15,7 @@ Remote telemetry could narrow that search. However, giving an agent broad databa
 Our contribution is a prototype architecture and an evaluation proposal, not a demonstrated result.
 
 1. **A closed debugging loop.** A case object carries evidence from a user's report to an agent's proposal, and a server-enforced state machine separates *evidence collected* from *repair validated*. The agent cannot skip the user, and it cannot approve a fix on the user's behalf.
-2. **Reversible, runtime-selectable instrumentation.** Probes are declared as data and published to a case, so an agent can refine what it observes without shipping a new build per diagnostic iteration, and instrumentation can be withdrawn when the case closes. The default client emits nothing.
+2. **Reversible, runtime-selectable instrumentation.** Probes are declared as data and published to a case, so an agent can refine what it observes without shipping a new build per iteration, and instrumentation can be withdrawn when the case closes. The default client emits nothing.
 3. **An explicit verification boundary.** We separate what the artifact implements from what it has not been shown to do, and register a paired evaluation with blinded adjudication before any efficacy claim is made.
 
 The artifact is implemented in Python, SQL, JavaScript, and JSON; all 54 local tests pass, but they are mocked unit tests over the rules, not deployment security or end-to-end reliability.
@@ -46,24 +46,24 @@ The schema is not by itself a security boundary. Every access goes through secur
 
 The agent never receives arbitrary SQL or unrestricted credentials. `telemetry_tool.py` exposes one agent-facing function per capability; each validates its arguments locally, calls the management API with a developer key, and returns JSON to the model (Table 1).
 
-| Tool (agent-facing function) | Purpose | Bounds enforced before the call |
-| --- | --- | --- |
-| `list_debug_cases_for_agent(limit, state)` | List cases | `limit` 1..100; known `state` |
-| `fetch_case_logs_for_agent(case_id, limit)` | Read case logs | UUID `case_id`; `limit` 1..100 |
-| `fetch_recent_client_logs_for_agent(limit, client_session_id)` | Recent events | `limit` 1..100; optional session filter |
-| `request_instrumentation_for_agent(case_id, instructions, probes)` | Publish probes | <=20 probes; `probe_id` <=80 chars; `target` <=200; `level` in {info, warn, error}; `capture` an object |
-| `await_user_recheck_for_agent(case_id, instructions, probes)` | Request re-check | Same probe bounds; probes optional |
-| `finalize_case_for_agent(case_id)` | Mark fix ready | Only from `rechecked` |
-| `abandon_case_for_agent(case_id)` | End loop | Only from non-terminal states |
-| `cleanup_case_for_agent(case_id)` | Clean up | Only from `approved`; deletes telemetry and deactivates probes |
+| Tool (agent-facing function) | Bounds enforced before the call |
+| --- | --- |
+| `list_debug_cases_for_agent(limit, state)` | `limit` 1..100; known `state` |
+| `fetch_case_logs_for_agent(case_id, limit)` | UUID `case_id`; `limit` 1..100 |
+| `fetch_recent_client_logs_for_agent(limit, client_session_id)` | `limit` 1..100; optional session filter |
+| `request_instrumentation_for_agent(case_id, instructions, probes)` | <=20 probes; `probe_id` <=80 chars; `target` <=200; `level` in {info, warn, error}; `capture` an object |
+| `await_user_recheck_for_agent(case_id, instructions, probes)` | Same probe bounds; probes optional |
+| `finalize_case_for_agent(case_id)` | Only from `rechecked` |
+| `abandon_case_for_agent(case_id)` | Only from non-terminal states |
+| `cleanup_case_for_agent(case_id)` | Only from `approved`; deletes telemetry and deactivates probes |
 
-Output is bounded as well as input. Detail objects are redacted recursively against a fixed set of sensitive keys (email, phone, token, password, authorization, access and refresh tokens, secret, ssn, credit card); free-text fields (title, user report, instructions, report, name) are scrubbed for e-mail addresses and long digit runs and truncated at 4000 characters; other strings are truncated; row count and total response size are capped (256 KB). These are defense-in-depth measures inside a narrow surface, not a privacy guarantee.
+Output is bounded as well as input. Detail objects are redacted recursively against a fixed set of sensitive keys (email, phone, token, password, authorization, access and refresh tokens, secret, ssn, credit card); free-text fields (title, user report, instructions, report, name) are scrubbed for e-mail addresses and long digit runs and truncated at 4000 characters; other strings are truncated; row count and total response size are capped (256 KB). These are defense-in-depth measures, not a privacy guarantee.
 
-Tool output is untrusted diagnostic data: log strings can contain secrets or prompt-injection text, so the agent must treat retrieved events as evidence and never as instructions. Every call is authenticated by key and scoped to one account, and the model cannot widen its own scope because filters are validated and ownership is re-checked server-side.
+Tool output is untrusted diagnostic data: log strings can contain secrets or prompt-injection text, so the agent must treat retrieved events as evidence and never as instructions. Every call is authenticated by key and scoped to one account, and the model cannot widen that scope because filters are validated and ownership is re-checked server-side.
 
 ### 3.4 The closed debugging loop
 
-Read access alone does not close the loop: an agent can observe an event but cannot ask the device for better evidence, cannot know whether the user's reproduction attempt succeeded, and cannot verify that a proposed patch fixed the reported symptom. The protocol is therefore bidirectional, stateful, and human-in-the-loop.
+Read access alone does not close the loop: an agent can observe an event but cannot ask the device for better evidence, cannot know whether the reproduction attempt succeeded, and cannot verify that a patch fixed the symptom. The protocol is therefore bidirectional, stateful, and human-in-the-loop.
 
 ![Figure 1: The closed debugging loop.](figure_closed_loop.png)
 
@@ -96,11 +96,9 @@ Two properties carry the contribution. **Runtime-selectable probes** decouple in
 A user selects text and taps the highlight control, but the color palette never appears. The client records a structured event such as:
 
 ```json
-{
-  "level": "error", "event": "highlight_palette_presentation_failed",
-  "detail": {"view": "HighlightPaletteView", "failure_code": "missing_presentation_context",
-             "app_version": "1.2.0", "os_version": "iOS 18"}
-}
+{"level": "error", "event": "highlight_palette_presentation_failed",
+ "detail": {"view": "HighlightPaletteView", "failure_code": "missing_presentation_context",
+            "app_version": "1.2.0", "os_version": "iOS 18"}}
 ```
 
 The agent retrieves only events authorized for that case, searches the repository for the palette presentation path, examines state transitions and presentation context, and adds or updates a regression test where feasible. The event guides the search but does not prove the root cause: instrumentation may be incomplete, the event may be stale, and the failure may have another cause. A valid repair claim requires a test or a controlled reproduction.
@@ -146,7 +144,7 @@ The harness already supports part of this protocol: it permits case listing and 
 
 ## 6. Limitations and Risks
 
-Telemetry can be absent, delayed, duplicated, misleading, or too coarse to reproduce a UI defect. Identifiers, user descriptions, and stack traces may be sensitive, and redaction is a mitigation rather than a guarantee. Remote storage adds network dependency, latency, cost, retention obligations, and an attack surface, and log content is attacker-controllable, so it must never be treated as trusted instructions. A retrieval tool is not an autonomous repair system: reliable repair also needs repository access, tests or reproduction, authorization controls, and careful validation. The device-side probe runtime is specified and scripted but not shipped, so the loop's final link is the least exercised part of the design. Generalization beyond the evaluated app, schema, model, and harness remains empirical.
+Telemetry can be absent, delayed, duplicated, misleading, or too coarse to reproduce a UI defect. Identifiers, user descriptions, and stack traces may be sensitive, and redaction is a mitigation rather than a guarantee. Remote storage adds network dependency, latency, cost, retention obligations, and an attack surface, and log content is attacker-controllable, so it must never be treated as trusted instructions. A retrieval tool is not an autonomous repair system: reliable repair also needs repository access, tests or reproduction, authorization controls, and careful validation. The device-side probe runtime is specified and scripted but not shipped, so the loop's final link is the least exercised part of the design.
 
 ## 7. Conclusion
 
