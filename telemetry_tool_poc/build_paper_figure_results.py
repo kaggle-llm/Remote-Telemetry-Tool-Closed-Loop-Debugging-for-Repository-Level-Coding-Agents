@@ -171,7 +171,21 @@ def build(small, large):
         entries = [("compact", small_summary, small_runs)]
     token_panel(axes[2], entries)
 
-    axes[0].legend(fontsize=8.0, frameon=False, loc="lower right", labelcolor=MUTED)
+    handles, labels = axes[0].get_legend_handles_labels()
+    figure.legend(
+        handles,
+        labels,
+        loc="upper left",
+        bbox_to_anchor=(0.008, 0.930),
+        bbox_transform=figure.transFigure,
+        ncol=2,
+        frameon=False,
+        fontsize=8.2,
+        labelcolor=MUTED,
+        handlelength=1.6,
+        handletextpad=0.6,
+        columnspacing=2.6,
+    )
     for axis in axes:
         axis.tick_params(colors=MUTED, labelsize=8.0)
     model = small_summary.get("model", "local model")
@@ -206,6 +220,28 @@ def validate(figure, axes):
             bounds = axis.get_window_extent(renderer=renderer)
             if extent.x1 > bounds.x1 + 1 or extent.x0 < bounds.x0 - 1:
                 problems.append(f"text outside axes: {artist.get_text()!r}")
+
+    labels = []
+    for axis in axes:
+        for artist in list(axis.texts) + list(axis.get_yticklabels()) + list(axis.get_xticklabels()):
+            labels.append((artist.get_text(), artist.get_window_extent(renderer=renderer)))
+    for artist in figure.texts:
+        labels.append((artist.get_text(), artist.get_window_extent(renderer=renderer)))
+    for legend in figure.legends:
+        for artist in legend.get_texts():
+            labels.append((artist.get_text(), artist.get_window_extent(renderer=renderer)))
+
+    for first in range(len(labels)):
+        for second in range(first + 1, len(labels)):
+            first_text, first_extent = labels[first]
+            second_text, second_extent = labels[second]
+            overlap_x = min(first_extent.x1, second_extent.x1) - max(first_extent.x0, second_extent.x0)
+            overlap_y = min(first_extent.y1, second_extent.y1) - max(first_extent.y0, second_extent.y0)
+            if overlap_x > 0.5 and overlap_y > 0.5:
+                problems.append(
+                    f"overlapping labels: {first_text!r} and {second_text!r} "
+                    f"(overlap {overlap_x:.1f}x{overlap_y:.1f} px)"
+                )
     return problems
 
 

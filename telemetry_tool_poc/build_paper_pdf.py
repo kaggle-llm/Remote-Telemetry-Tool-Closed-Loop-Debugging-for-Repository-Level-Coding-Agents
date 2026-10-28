@@ -56,6 +56,11 @@ FIGURE_CAPTIONS = {
         "Figure 3. The server-enforced case state machine. Transitions are validated twice, in the Express "
         "layer and in the RPCs, and only the user can approve a fix."
     ),
+    "figure_ab_results.png": (
+        "Figure 4. Paired evaluation on the compact and the larger repository variant. The left and middle "
+        "panels show repair and root-cause accuracy with and without diagnostic events; the right panel shows "
+        "the per-trial context cost of condition B against condition A."
+    ),
 }
 
 INK = colors.HexColor("#0f172a")
