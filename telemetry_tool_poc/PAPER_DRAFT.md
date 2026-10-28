@@ -26,11 +26,9 @@ We did not run a systematic literature survey; the references below are represen
 
 *Repository-level agents and benchmarks.* SWE-bench [1] evaluates whether models can resolve real GitHub issues from an issue description and a repository snapshot. SWE-agent [2] shows that the agent-computer interface, not only the model, materially changes agent performance, and Agentless [3] demonstrates that a simple localization-repair-validation pipeline can beat complex agent scaffolds. All three observe failures through the repository and the test harness; a user-visible defect on a physical device is outside that observation surface.
 
-*Interleaved reasoning, acting, and open-weight models.* ReAct [4] established the pattern of interleaving reasoning traces with tool actions, the pattern our protocol instantiates for telemetry access, and Google ADK [5] provides the orchestration and function-calling machinery such a protocol would be hosted in. Gemma 4 [6] spans 2.3B to 31B parameters, supports native function calling, and targets on-device deployment in its smaller variants, so context economy is a first-order concern; that motivates bounded, redacted, case-scoped retrieval instead of broad log search.
+*Interleaved reasoning, acting, and open-weight models.* ReAct [4] established the pattern of interleaving reasoning traces with tool actions, the pattern our protocol instantiates for telemetry access, and Google ADK [5] provides the orchestration and function-calling machinery such a protocol would be hosted in. Gemma 4 [6] spans 2.3B to 31B parameters with native function calling and on-device-oriented small variants, so context economy is a first-order concern; that motivates bounded, case-scoped retrieval instead of broad log search.
 
-*Data plane and telemetry practice.* Row Level Security and Postgres function privileges are the standard mechanism for restricting who may read which rows [7, 8]; we apply the same idea one level up, giving the agent a narrow tool surface while the database enforces ownership per case. Our contribution is not the event format, which is established observability practice, but the closed protocol around it and its reversibility.
-
-*Gap.* We are not aware of work that treats the end user's device as an explicit participant in an agentic debugging loop, with a server-enforced protocol that separates evidence collection from repair validation and guarantees that instrumentation can be withdrawn. That protocol, and a test of whether it helps, is what this artifact proposes.
+*Data plane and gap.* Row Level Security and Postgres function privileges are the standard way to restrict who may read which rows [7, 8]; we apply the same idea one level up, giving the agent a narrow tool surface while the database enforces ownership per case. Our contribution is not the event format, which is established observability practice, but the closed protocol around it and its reversibility. We are not aware of work that treats the end user's device as an explicit participant in an agentic debugging loop, with a server-enforced protocol that separates evidence collection from repair validation and guarantees that instrumentation can be withdrawn. That protocol, and a test of whether it helps, is what this artifact proposes.
 
 ## 3. System Design and Method
 
@@ -59,7 +57,7 @@ The agent never receives arbitrary SQL or unrestricted credentials. `telemetry_t
 | `abandon_case_for_agent(case_id)` | End the loop | Only from non-terminal states |
 | `cleanup_case_for_agent(case_id)` | Delete case telemetry, deactivate probes | Only from `approved` |
 
-Output is bounded as well as input. Detail objects are redacted recursively against a fixed set of sensitive keys (email, phone, token, password, authorization, access and refresh tokens, secret, ssn, credit card); free-text fields (title, user report, instructions, report, name) are scrubbed for e-mail addresses and long digit runs and truncated at 4000 characters; other strings are truncated; row count and total response size are capped (256 KB). These are defense-in-depth measures inside a deliberately narrow surface, not a privacy guarantee.
+Output is bounded as well as input. Detail objects are redacted recursively against a fixed set of sensitive keys (email, phone, token, password, authorization, access and refresh tokens, secret, ssn, credit card); free-text fields (title, user report, instructions, report, name) are scrubbed for e-mail addresses and long digit runs and truncated at 4000 characters; other strings are truncated; row count and total response size are capped (256 KB). These are defense-in-depth measures inside a narrow surface, not a privacy guarantee.
 
 Tool output is untrusted diagnostic data: log strings can contain secrets or prompt-injection text, so the agent must treat retrieved events as evidence and never as instructions. Every call is authenticated by key and scoped to one account, and the model cannot widen its own scope because filters are validated and ownership is re-checked server-side.
 
@@ -72,10 +70,10 @@ Read access alone does not close the loop: an agent can observe an event but can
 1. **Report.** The client creates a `debug_cases` row with the failure title and the user's own description. No telemetry is captured by default.
 2. **Instrument.** The agent publishes probes (`probe_id`, `target`, bounded `capture` object, `level`) plus instructions; the client applies them at runtime and links every resulting event to the case, so evidence is scoped to one attempt rather than the whole account.
 3. **Await re-check.** The agent tells the user what to try and the case moves to `awaiting_recheck`; the client polls case state with a version counter, so no push infrastructure is required.
-4. **Re-check.** The client reports its outcome through `report_case_progress`, which stores the report as a bounded entry in `case_reports` and moves the case to `rechecked`. A dedicated timeline table keeps repeated re-checks from overflowing the original 4000-character report column.
+4. **Re-check.** The client reports its outcome through `report_case_progress`, which stores the report as a bounded entry in `case_reports` and moves the case to `rechecked`; a dedicated timeline table keeps repeated re-checks from overflowing the original 4000-character report column.
 5. **Analyze and patch.** The agent reads only case-scoped evidence, separates observation from inference, inspects the repository, and proposes a minimal patch. If the repository lacks a faithful client test, it reports that limitation instead of claiming the remote issue is fixed.
-6. **Finalize.** The agent calls `finalize_case`, moving the case to `patch_ready`; it cannot skip this state and cannot mark a case approved on the user's behalf.
-7. **Approve and clean up.** The user approves or rejects through `approve_case`. Only after approval may the agent call `cleanup_case`, which deletes the telemetry captured for that case, deactivates the case's probes so the device stops collecting, and marks the case `resolved`.
+6. **Finalize.** The agent calls `finalize_case`, moving the case to `patch_ready`; it cannot skip this state and cannot approve on the user's behalf.
+7. **Approve and clean up.** The user approves or rejects through `approve_case`. Only after approval may the agent call `cleanup_case`, which deletes the telemetry captured for that case, deactivates its probes so the device stops collecting, and marks the case `resolved`.
 
 Table 2 gives the state machine, enforced twice in the Express layer and in the RPCs, so a disallowed transition yields an error rather than an inconsistent record.
 
@@ -110,7 +108,7 @@ A user selects text and taps the highlight control, but the color palette never 
 }
 ```
 
-The agent retrieves only events authorized for that case, searches the repository for the palette presentation path, examines state transitions and presentation context, and adds or updates a regression test where feasible. The event guides the search but does not prove the root cause: instrumentation may be incomplete, the event may be stale, and the failure may have another cause. A valid repair claim requires a test or a controlled reproduction that exercises the relevant behavior.
+The agent retrieves only events authorized for that case, searches the repository for the palette presentation path, examines state transitions and presentation context, and adds or updates a regression test where feasible. The event guides the search but does not prove the root cause: instrumentation may be incomplete, the event may be stale, and the failure may have another cause. A valid repair claim requires a test or a controlled reproduction.
 
 ## 4. Implementation
 
@@ -143,7 +141,7 @@ These suites are not a security audit, not a proof of transactional correctness 
 
 ### 5.2 An exploratory run that we do not report as evidence
 
-A three-task exploratory run with `gemma4:31b:cloud` is retained in `eval/results/eval_summary.json` for auditability only and is explicitly marked invalid for publication. The first runner counted any tool call as a successful resolution, inferred diagnostic accuracy with a substring heuristic, reused live case identifiers, and allowed state-mutating tools, so the run cannot establish diagnosis accuracy, repair, protocol compliance, or a paired comparison.
+A three-task exploratory run with `gemma4:31b:cloud` is retained in `eval/results/eval_summary.json` for auditability only and is explicitly marked invalid for publication: the first runner counted any tool call as a successful resolution, inferred diagnostic accuracy with a substring heuristic, reused live case identifiers, and allowed state-mutating tools, so the run cannot establish diagnosis accuracy, repair, protocol compliance, or a paired comparison.
 
 ### 5.3 Preregistered paired study
 
@@ -151,13 +149,13 @@ A valid follow-up study should use isolated synthetic cases and the same model, 
 
 The harness already supports part of this protocol: it permits case listing and case-log retrieval only, records model-reported tokens, latency, and tool errors, leaves `diagnostic_accuracy` and `resolution_success` unset for independent adjudication, refuses to touch telemetry without an explicit `--confirm-nonproduction` flag, and labels its output `pilot_unadjudicated`. The bundled scenario file contains three synthetic task descriptions and no live case identifiers, so future runs should point the harness at isolated fixtures rather than a shared account.
 
-### 5.4 Planned metrics and a separate security evaluation
+### 5.4 Planned metrics and a security evaluation
 
-Planned outcomes are independently adjudicated diagnostic accuracy, validated repair rate, relevant-event fraction, unauthorized-record or sensitive-field leakage, protocol compliance, tool-call count, wall-clock latency, and model-reported token usage. A separate security evaluation should attempt cross-user and cross-case reads, oversized and malformed probe payloads, prompt injection inside event fields, cleanup behavior when approval is missing, and authorization failures at every key type. No performance gain is claimed until a controlled experiment is completed.
+Planned outcomes are adjudicated diagnostic accuracy, validated repair rate, relevant-event fraction, leakage, protocol compliance, tool-call count, latency, and token usage. A separate security evaluation should attempt cross-user and cross-case reads, malformed probe payloads, prompt injection inside event fields, unauthorized cleanup, and authorization failures at every key type. No performance gain is claimed until a controlled experiment is completed.
 
 ## 6. Limitations and Risks
 
-Telemetry can be absent, delayed, duplicated, misleading, or too coarse to reproduce a UI defect. Identifiers, user descriptions, and stack traces may be sensitive, and redaction is a mitigation rather than a guarantee. Remote storage adds network dependency, latency, cost, retention obligations, and an attack surface. Log content is attacker-controllable and must never be treated as trusted instructions. A retrieval tool is not an autonomous repair system: reliable repair also needs repository access, tests or reproduction, authorization controls, and careful validation. The device-side probe runtime is specified and scripted but not shipped, so the loop's final link is the least exercised part of the design. Generalization beyond the evaluated app, event schema, model, and harness remains an empirical question.
+Telemetry can be absent, delayed, duplicated, misleading, or too coarse to reproduce a UI defect. Identifiers, user descriptions, and stack traces may be sensitive, and redaction is a mitigation rather than a guarantee. Remote storage adds network dependency, latency, cost, retention obligations, and an attack surface, and log content is attacker-controllable, so it must never be treated as trusted instructions. A retrieval tool is not an autonomous repair system: reliable repair also needs repository access, tests or reproduction, authorization controls, and careful validation. The device-side probe runtime is specified and scripted but not shipped, so the loop's final link is the least exercised part of the design. Generalization beyond the evaluated app, event schema, model, and harness remains an empirical question.
 
 ## 7. Conclusion
 
@@ -174,6 +172,6 @@ Task-scoped remote telemetry is a tractable way to close the information gap bet
 7. Supabase, "Row Level Security." https://supabase.com/docs/guides/database/postgres/row-level-security
 8. Supabase, "Database functions." https://supabase.com/docs/guides/database/functions
 
-## Artifact and Reproducibility
+## Reproducibility
 
-The artifact contains the Python tool library, the SQL schema and migrations, the schema linter and checker, the Express backend, the Vite dashboard, the agent runner, the pilot evaluation harness, three synthetic task fixtures, and this write-up with its source. Test suites run with `npm test` in `web_demo/`, `python -m unittest discover -s telemetry_tool_poc`, and `python -m unittest test_ollama_agent`; the dashboard starts with `npm start` in `web_demo/` (default port 5175), and the closed loop can be driven with `python -m ai_client_demo.debug_loop_demo`. Dependency versions are pinned in `web_demo/package-lock.json`; the Python tool library and tests use only the standard library, and the agent runner additionally requires the `openai` client package. The pilot harness requires an explicit confirmation flag and isolated fixtures before it will touch any endpoint. No competition data or user data is redistributed.
+The artifact ships the tool library, schema and migrations, schema linter and checker, Express backend, Vite dashboard, agent runner, pilot harness, three synthetic task fixtures, and this write-up with its source. Test suites run with `npm test` in `web_demo/`, `python -m unittest discover -s telemetry_tool_poc`, and `python -m unittest test_ollama_agent`; the dashboard starts with `npm start` in `web_demo/` (default port 5175), and the closed loop can be driven with `python -m ai_client_demo.debug_loop_demo`. The pilot harness requires an explicit confirmation flag and isolated fixtures before it will touch any endpoint. No competition data or user data is redistributed.
