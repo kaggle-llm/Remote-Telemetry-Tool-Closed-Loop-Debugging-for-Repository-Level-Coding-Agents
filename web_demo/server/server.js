@@ -6,7 +6,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import { OAuth2Client } from "google-auth-library";
 import { createClient } from "@supabase/supabase-js";
-import { CASE_STATES, MAX_PROBES, isUuid, redactDetail, redactRows, normalizeProbes, scrubFreeText } from "./case_rules.js";
+import { CASE_STATES, MAX_PROBES, canTransition, isUuid, redactDetail, redactRows, normalizeProbes, scrubFreeText } from "./case_rules.js";
 
 const required = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_CALLBACK_URL", "APP_SESSION_SECRET", "SUPABASE_URL", "SUPABASE_SECRET_KEY", "APP_ORIGIN"];
 for (const name of required) if (!process.env[name]) throw new Error(`Missing environment variable: ${name}`);
@@ -425,6 +425,65 @@ app.post("/api/client/cases/:id/approve", sameOrigin, requireIngestKey, async (r
     return res.status(409).json({ error: "The case is not ready for approval." });
   }
   res.json(data);
+});
+
+// Dashboard side of the loop: the signed-in developer acts as the client-side
+// tester. Ownership is enforced by the authenticated app user, and every state
+// change is validated against the same transition map as the client RPCs.
+const DASHBOARD_CASE_COLUMNS = "id,title,state,version,instructions,created_at,updated_at,state_changed_at,resolved_at,client_session_id";
+
+app.get("/api/cases", requireUser, async (req, res) => {
+  const { data, error } = await db.from("debug_cases").select(DASHBOARD_CASE_COLUMNS).eq("user_id", req.user.id).order("updated_at", { ascending: false }).limit(50);
+  if (error) return res.status(500).json({ error: "Could not load debug cases." });
+  res.json(redactRows(data || []));
+});
+
+app.get("/api/cases/:id", requireUser, async (req, res) => {
+  if (!isUuid(req.params.id)) return res.status(400).json({ error: "Invalid case id." });
+  const { data: caseRow, error } = await db.from("debug_cases").select(DASHBOARD_CASE_COLUMNS).eq("id", req.params.id).eq("user_id", req.user.id).maybeSingle();
+  if (error) return res.status(500).json({ error: "Could not load the debug case." });
+  if (!caseRow) return res.status(404).json({ error: "Case not found." });
+  const [probesResult, reportsResult] = await Promise.all([
+    db.from("case_probes").select("probe_id,target,capture,level,active").eq("case_id", req.params.id).eq("active", true).order("created_at", { ascending: true }),
+    db.from("case_reports").select("id,report,created_at").eq("case_id", req.params.id).order("created_at", { ascending: false }).limit(20),
+  ]);
+  res.json({
+    case: redactRows([caseRow])[0],
+    probes: probesResult.data || [],
+    reports: redactRows(reportsResult.data || []),
+  });
+});
+
+app.post("/api/cases/:id/report", sameOrigin, requireUser, async (req, res) => {
+  if (!isUuid(req.params.id)) return res.status(400).json({ error: "Invalid case id." });
+  const report = String(req.body?.report || "").trim();
+  if (!report || report.length > 4000) return res.status(400).json({ error: "report must be 1-4000 characters." });
+  const { data: caseRow, error } = await db.from("debug_cases").select("id,state,version").eq("id", req.params.id).eq("user_id", req.user.id).maybeSingle();
+  if (error) return res.status(500).json({ error: "Could not load the debug case." });
+  if (!caseRow) return res.status(404).json({ error: "Case not found." });
+  if (!canTransition(caseRow.state, "rechecked")) return res.status(409).json({ error: "The case is not waiting for a re-check report." });
+  const { error: reportError } = await db.from("case_reports").insert({ case_id: req.params.id, report });
+  if (reportError) return res.status(500).json({ error: "Could not store the report." });
+  const now = new Date().toISOString();
+  const { error: updateError } = await db.from("debug_cases").update({ state: "rechecked", version: caseRow.version + 1, updated_at: now, state_changed_at: now }).eq("id", req.params.id);
+  if (updateError) return res.status(500).json({ error: "Could not update the debug case." });
+  res.json({ case_id: req.params.id, state: "rechecked", version: caseRow.version + 1, updated: true });
+});
+
+app.post("/api/cases/:id/approve", sameOrigin, requireUser, async (req, res) => {
+  if (!isUuid(req.params.id)) return res.status(400).json({ error: "Invalid case id." });
+  if (typeof req.body?.approved !== "boolean") return res.status(400).json({ error: "approved must be true or false." });
+  const { data: caseRow, error } = await db.from("debug_cases").select("id,state,version").eq("id", req.params.id).eq("user_id", req.user.id).maybeSingle();
+  if (error) return res.status(500).json({ error: "Could not load the debug case." });
+  if (!caseRow) return res.status(404).json({ error: "Case not found." });
+  const nextState = req.body.approved ? "approved" : "rejected";
+  if (!canTransition(caseRow.state, nextState)) return res.status(409).json({ error: "The case is not ready for approval." });
+  const now = new Date().toISOString();
+  const patch = { state: nextState, version: caseRow.version + 1, updated_at: now, state_changed_at: now };
+  if (req.body.approved) patch.resolved_at = now;
+  const { error: updateError } = await db.from("debug_cases").update(patch).eq("id", req.params.id);
+  if (updateError) return res.status(500).json({ error: "Could not update the debug case." });
+  res.json({ case_id: req.params.id, state: nextState, version: caseRow.version + 1, updated: true });
 });
 
 // Agent-facing side of the loop: inspect cases, publish instrumentation probes

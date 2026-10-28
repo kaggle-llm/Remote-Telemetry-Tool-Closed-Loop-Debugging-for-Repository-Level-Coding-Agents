@@ -1,7 +1,8 @@
 import "../styles.css";
+import { caseActions, formatCaseSummary, formatInstructions, formatProbes } from "./case_actions.js";
 
 const $ = (id) => document.getElementById(id);
-const state = { user: null, apiKey: null, ingestKey: null };
+const state = { user: null, apiKey: null, ingestKey: null, cases: [], selectedCaseId: null };
 
 function notify(message, kind = "info") {
   const notice = $("notice");
@@ -66,6 +67,93 @@ async function loadDashboard() {
   renderRows($("api-keys"), keys, "key");
   renderRows($("ingest-keys"), ingestKeys, "ingest");
   renderRows($("ai-sessions"), sessions, "session");
+  await loadCases();
+}
+
+function renderCaseList() {
+  const container = $("case-list");
+  container.replaceChildren();
+  if (!state.cases.length) {
+    container.textContent = "Henüz debug vakası yok.";
+    return;
+  }
+  for (const item of state.cases) {
+    const summary = formatCaseSummary(item);
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "key-row case-row";
+    const label = document.createElement("span");
+    label.textContent = `${summary.title} · ${summary.stateLabel}`;
+    const open = document.createElement("span");
+    open.className = "tag";
+    open.textContent = summary.state;
+    row.append(label, open);
+    row.addEventListener("click", () => selectCase(summary.id));
+    container.append(row);
+  }
+}
+
+function renderCaseDetail(detail) {
+  const summary = formatCaseSummary(detail.case);
+  const actions = caseActions(summary.state);
+  $("case-detail").hidden = false;
+  $("case-title").textContent = summary.title;
+  $("case-state").textContent = summary.stateLabel;
+  $("case-instructions").textContent = formatInstructions(detail.case.instructions);
+  const probes = formatProbes(detail.probes);
+  const probeBox = $("case-probes");
+  probeBox.replaceChildren();
+  if (!probes.length) probeBox.textContent = "Aktif probe yok.";
+  for (const probe of probes) {
+    const item = document.createElement("div");
+    item.className = "probe-row";
+    item.textContent = `${probe.probeId} → ${probe.target} (${probe.level})`;
+    probeBox.append(item);
+  }
+  $("case-report").value = "";
+  $("send-report").disabled = !actions.canReport;
+  $("approve-case").disabled = !actions.canApprove;
+  $("reject-case").disabled = !actions.canReject;
+}
+
+async function loadCases() {
+  try {
+    state.cases = await api("/api/cases");
+    renderCaseList();
+    if (state.selectedCaseId) await selectCase(state.selectedCaseId);
+  } catch (error) {
+    notify(error.message, "error");
+  }
+}
+
+async function selectCase(caseId) {
+  state.selectedCaseId = caseId;
+  try {
+    const detail = await api(`/api/cases/${caseId}`);
+    renderCaseDetail(detail);
+  } catch (error) {
+    notify(error.message, "error");
+  }
+}
+
+async function sendReport() {
+  const report = $("case-report").value.trim();
+  if (!report) { notify("Geri bildirim metni boş olamaz.", "error"); return; }
+  try {
+    await api(`/api/cases/${state.selectedCaseId}/report`, { method: "POST", body: JSON.stringify({ report }) });
+    await loadCases();
+    await selectCase(state.selectedCaseId);
+    notify("Geri bildirim gönderildi. Vaka yeniden kontrol edildi olarak işaretlendi.", "success");
+  } catch (error) { notify(error.message, "error"); }
+}
+
+async function decideCase(approved) {
+  try {
+    await api(`/api/cases/${state.selectedCaseId}/approve`, { method: "POST", body: JSON.stringify({ approved }) });
+    await loadCases();
+    await selectCase(state.selectedCaseId);
+    notify(approved ? "Yama onaylandı. Agent artık logları temizleyebilir." : "Yama reddedildi; vaka yeniden incelemeye dönebilir.", "success");
+  } catch (error) { notify(error.message, "error"); }
 }
 
 async function createKey() {
@@ -94,6 +182,10 @@ $("copy-ingest-key").addEventListener("click", async () => { await navigator.cli
 $("sign-out").addEventListener("click", async () => {
   window.location.href = "/api/auth/logout";
 });
+$("refresh-cases").addEventListener("click", () => loadCases());
+$("send-report").addEventListener("click", () => sendReport());
+$("approve-case").addEventListener("click", () => decideCase(true));
+$("reject-case").addEventListener("click", () => decideCase(false));
 
 loadDashboard().catch((error) => {
   if (error.message.includes("Sign in") || error.message.includes("Session") || error.message.includes("Invalid session")) showOnly("login-view");

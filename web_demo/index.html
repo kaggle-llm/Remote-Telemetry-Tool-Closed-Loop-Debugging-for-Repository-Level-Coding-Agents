@@ -24,7 +24,23 @@
          <section class="panel"><div class="panel-heading"><div><p class="eyebrow">02 / TOOL CREDENTIAL</p><h2>AI developer key</h2></div></div><label>Anahtar adı<input id="api-key-name" value="Developer agent"></label><button id="create-api-key" class="button button-accent">Developer key oluştur</button><div id="api-keys" class="key-list"></div><div id="secret-panel" class="secret-panel" hidden><p>Bu değeri yalnızca AI runtime secret store'unda kullanın; client app'e koymayın.</p><code id="new-secret"></code><button id="copy-api-key" class="button button-light">Kopyala</button></div></section>
         <section class="panel"><div class="panel-heading"><div><p class="eyebrow">03 / AI RUNS</p><h2>AI oturumları</h2></div></div><p class="hint">AI, her çalıştırmada developer key ile kendi oturumunu açar. Buradan geçmiş oturumları görebilir ve iptal edebilirsin.</p><div id="ai-sessions" class="key-list"></div></section>
       </div>
-       <section class="panel logs-panel"><div class="panel-heading logs-heading"><div><p class="eyebrow">03 / AI CLIENT</p><h2>Tool testi</h2></div></div><p class="lede">Bu panel kullanıcı ve key yönetir. AI tool testlerini bağımsız istemci ortamınızdan çalıştırın; developer key’i güvenli secret store’da tutun.</p></section>
+        <section class="panel logs-panel"><div class="panel-heading logs-heading"><div><p class="eyebrow">03 / AI CLIENT</p><h2>Tool testi</h2></div></div><p class="lede">Bu panel kullanıcı ve key yönetir. AI tool testlerini bağımsız istemci ortamınızdan çalıştırın; developer key’i güvenli secret store’da tutun.</p></section>
+        <section class="panel cases-panel">
+          <div class="panel-heading"><div><p class="eyebrow">04 / DEBUG CASES</p><h2>Debug vakaları</h2></div><button id="refresh-cases" class="button button-light">Yenile</button></div>
+          <p class="hint">Agent'in istediği remote-debug geri bildirimini buradan gönderin; hazır olan yamayı onaylayın veya reddedin. Onay verilmeden vaka logları silinmez.</p>
+          <div id="case-list" class="key-list"></div>
+          <div id="case-detail" class="case-detail" hidden>
+            <div class="case-meta"><span id="case-title" class="case-title"></span><span id="case-state" class="tag"></span></div>
+            <div class="case-block"><p class="eyebrow">AGENT TALİMATI</p><p id="case-instructions" class="case-instructions"></p></div>
+            <div class="case-block"><p class="eyebrow">PROBES</p><div id="case-probes" class="case-probes"></div></div>
+            <label>Geribildirim<textarea id="case-report" rows="4" maxlength="4000" placeholder="Cihazda ne gözlemlediniz? Agent'in istediği bilgiyi yazın."></textarea></label>
+            <div class="case-actions">
+              <button id="send-report" class="button button-accent">Geri bildirim gönder</button>
+              <button id="approve-case" class="button button-accent">Yamayı onayla</button>
+              <button id="reject-case" class="button button-light">Reddet</button>
+            </div>
+          </div>
+        </section>
     </section>
     <div id="notice" class="notice" role="status" aria-live="polite"></div>
     <footer><span>TELEMETRY LAB · SECURITY-FIRST PROTOTYPE</span><span>Google OAuth → API key + session key → scoped logs</span></footer>
