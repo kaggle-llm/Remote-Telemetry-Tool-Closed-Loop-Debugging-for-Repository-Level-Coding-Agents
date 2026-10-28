@@ -1,0 +1,20 @@
+[
+  {
+    "task_id": "task_highlight_palette_01",
+    "title": "Highlight palette does not open",
+    "description": "User selects text and taps highlight control, but the color palette never appears.",
+    "expected_root_cause": "Missing presentation context in HighlightPaletteView"
+  },
+  {
+    "task_id": "task_epub_anchor_02",
+    "title": "iOS 6s reading mode: EPUB anchor opens blank page",
+    "description": "Tapping an in-book anchor in reading mode opens a new blank page instead of scrolling to target.",
+    "expected_root_cause": "Race condition in iframe load handler or missing pendingFragment processing"
+  },
+  {
+    "task_id": "task_profile_avatar_03",
+    "title": "Profile avatar fails to load on Android",
+    "description": "User profile avatar shows placeholder indefinitely when network latency is high.",
+    "expected_root_cause": "Missing timeout handler in avatar image loader view model"
+  }
+]

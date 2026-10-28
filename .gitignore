@@ -41,3 +41,4 @@ gemma-4-developer-agent-paper.zip
 /ai_client_demo/.env
 /ai_client_demo/__pycache__/
 telemetry_tool_poc/.env
+__pycache__/

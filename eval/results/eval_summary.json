@@ -1,0 +1,20 @@
+{
+  "status": "invalid_exploratory_run_not_publishable",
+  "model": "gemma4:31b:cloud",
+  "notes": [
+    "These values came from an early flawed runner and must not be reported as paired-study results.",
+    "resolution_rate was defined as condition B and any tool call, which does not establish repair or validation.",
+    "diagnostic_accuracy used a substring heuristic and is not adjudicated accuracy.",
+    "Condition B invoked mutating tools against reused live debug cases; tasks were not isolated or independent.",
+    "No source-code patch or independent regression test was evaluated.",
+    "Raw observations are retained below only for auditability; do not use as evidence of efficacy."
+  ],
+  "raw_observations": [
+    {"task_id":"task_highlight_palette_01","condition":"A","model":"gemma4:31b:cloud","duration_seconds":4.96,"tool_calls":0,"tokens":1015,"diagnostic_accuracy_heuristic":true,"resolution_rate_heuristic":false,"response_summary":"To diagnose and fix the issue where the highlight palette does not open, I will follow a systematic software engineering approach. Since I do not have the codebase in front of me, I will simulate the "},
+    {"task_id":"task_highlight_palette_01","condition":"B","model":"gemma4:31b:cloud","duration_seconds":9.98,"tool_calls":8,"tokens":8066,"diagnostic_accuracy_heuristic":false,"resolution_rate_heuristic":true,"response_summary":""},
+    {"task_id":"task_epub_anchor_02","condition":"A","model":"gemma4:31b:cloud","duration_seconds":3.24,"tool_calls":0,"tokens":1021,"diagnostic_accuracy_heuristic":true,"resolution_rate_heuristic":false,"response_summary":"To resolve the issue where EPUB anchors open blank pages on iOS 6s (and potentially other iOS versions), we need to address how the reading mode handles internal hyperlink navigation.\n\n### Diagnosis\nT"},
+    {"task_id":"task_epub_anchor_02","condition":"B","model":"gemma4:31b:cloud","duration_seconds":14.58,"tool_calls":8,"tokens":11114,"diagnostic_accuracy_heuristic":false,"resolution_rate_heuristic":true,"response_summary":""},
+    {"task_id":"task_profile_avatar_03","condition":"A","model":"gemma4:31b:cloud","duration_seconds":6.58,"tool_calls":0,"tokens":881,"diagnostic_accuracy_heuristic":true,"resolution_rate_heuristic":false,"response_summary":"To resolve the issue where profile avatars fail to load on Android during high network latency, I will follow a systematic engineering approach to diagnose and fix the bug.\n\n### 1. Diagnosis & Root Ca"},
+    {"task_id":"task_profile_avatar_03","condition":"B","model":"gemma4:31b:cloud","duration_seconds":17.35,"tool_calls":8,"tokens":8270,"diagnostic_accuracy_heuristic":false,"resolution_rate_heuristic":true,"response_summary":""}
+  ]
+}
