@@ -6,23 +6,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 
-class SubtitleError(RuntimeError):
-    """Raised when a subtitle track cannot be read."""
-
-
 @dataclass(frozen=True)
 class Cue:
     """One timed line of a subtitle track."""
 
     start_ms: int
     end_ms: int
-    text: str = ""
-
-    def __post_init__(self) -> None:
-        if self.start_ms < 0:
-            raise ValueError("start_ms must not be negative")
-        if self.end_ms < self.start_ms:
-            raise ValueError("a cue must not end before it starts")
 
     def contains(self, position_ms: int) -> bool:
         """Whether the cue is shown at the playback ``position_ms``."""
@@ -49,25 +38,21 @@ def _to_milliseconds(value: str) -> int:
     """Convert a ``hh:mm:ss,mmm`` time code into milliseconds."""
     hours, minutes, rest = value.split(":")
     seconds, _, millis = rest.replace(",", ".").partition(".")
-    return (
-        (int(hours) * 3600 + int(minutes) * 60 + int(seconds)) * 1000
-        + int(millis.ljust(3, "0"))
-    )
+    return (int(hours) * 3600 + int(minutes) * 60 + int(seconds)) * 1000 + int(millis.ljust(3, "0"))
 
 
 def parse_cues(payload: str) -> tuple[Cue, ...]:
     """Parse the cues of a subtitle file ordered by their start time."""
     cues: list[Cue] = []
-    for number, line in enumerate(payload.splitlines(), start=1):
-        stripped = line.strip()
-        if not stripped or "-->" not in stripped:
+    for line in payload.splitlines():
+        if "-->" not in line:
             continue
-        start_text, _, end_text = stripped.partition("-->")
+        start_text, _, end_text = line.strip().partition("-->")
         try:
             start_ms = _to_milliseconds(start_text.strip())
             end_ms = _to_milliseconds(end_text.strip().split(" ")[0])
         except ValueError as error:
-            raise SubtitleError(f"the cue on line {number} has a broken time code") from error
+            raise ValueError("the subtitle file has a broken time code") from error
         cues.append(Cue(start_ms=start_ms, end_ms=end_ms))
     return tuple(sorted(cues, key=lambda cue: cue.start_ms))
 
@@ -82,14 +67,9 @@ class SubtitleLoader:
         """Load the subtitle track of ``track_id`` when one is available.
 
         A media track without subtitles is not an error, so the loader
-        answers with ``None`` when the file of the track is missing.
-        """
+        answers with ``None`` when the file of the track is missing."""
         try:
             payload = self._reader(f"{track_id}.{language}.srt")
         except FileNotFoundError:
             return None
-        return SubtitleTrack(
-            track_id=track_id,
-            language=language,
-            cues=parse_cues(payload),
-        )
+        return SubtitleTrack(track_id=track_id, language=language, cues=parse_cues(payload))

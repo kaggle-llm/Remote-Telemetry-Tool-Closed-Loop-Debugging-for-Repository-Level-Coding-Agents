@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Protocol
 
 
@@ -14,27 +13,11 @@ class RequestTimeoutError(SessionError):
     """Raised when a request runs into the timeout of its session."""
 
 
-@dataclass(frozen=True)
-class HttpResponse:
-    """The result of one HTTP request."""
-
-    status: int
-    body: bytes
-    headers: dict[str, str]
-
-
 class Transport(Protocol):
     """Transport that performs the requests of a session."""
 
-    def request(
-        self,
-        method: str,
-        url: str,
-        *,
-        headers: dict[str, str],
-        timeout_ms: int,
-    ) -> HttpResponse:
-        """Perform one request and return the answer of the server."""
+    def request(self, method: str, url: str, *, headers: dict[str, str], timeout_ms: int) -> bytes:
+        """Perform one request and return the payload of the answer."""
         ...
 
 
@@ -63,14 +46,8 @@ class HttpSession:
         """Whether the session has been closed."""
         return self._closed
 
-    def request(
-        self,
-        method: str,
-        url: str,
-        *,
-        headers: dict[str, str] | None = None,
-        timeout_ms: int | None = None,
-    ) -> HttpResponse:
+    def request(self, method: str, url: str, *, headers: dict[str, str] | None = None,
+                timeout_ms: int | None = None) -> bytes:
         """Perform a request that is bounded by a timeout.
 
         The timeout of the request wins over the timeout of the session
@@ -89,7 +66,7 @@ class HttpSession:
             timeout_ms=budget,
         )
 
-    def get(self, url: str, *, headers: dict[str, str] | None = None) -> HttpResponse:
+    def get(self, url: str, *, headers: dict[str, str] | None = None) -> bytes:
         """Perform a GET request bounded by the timeout of the session."""
         return self.request("GET", url, headers=headers)
 

@@ -7,21 +7,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 HOP_BY_HOP_HEADERS = frozenset(
-    {
-        "connection",
-        "keep-alive",
-        "proxy-authenticate",
-        "proxy-authorization",
-        "te",
-        "trailer",
-        "transfer-encoding",
-        "upgrade",
-    }
+    {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te",
+     "trailer", "transfer-encoding", "upgrade"}
 )
-
-
-class ProxyError(RuntimeError):
-    """Raised when a proxy configuration cannot be used."""
 
 
 @dataclass(frozen=True)
@@ -55,41 +43,23 @@ class ProxyConfig:
         return "Basic " + base64.b64encode(raw).decode("ascii")
 
 
-def build_proxy_config(
-    host: str,
-    port: int,
-    *,
-    scheme: str = "http",
-    username: str | None = None,
-    password: str | None = None,
-) -> ProxyConfig:
+def build_proxy_config(host: str, port: int, *, scheme: str = "http",
+                       username: str | None = None,
+                       password: str | None = None) -> ProxyConfig:
     """Build the proxy configuration used by the network layer."""
-    try:
-        return ProxyConfig(
-            host=host,
-            port=port,
-            scheme=scheme,
-            username=username,
-            password=password,
-        )
-    except ValueError as error:
-        raise ProxyError(str(error)) from error
+    return ProxyConfig(host=host, port=port, scheme=scheme,
+                       username=username, password=password)
 
 
-def apply_proxy_headers(
-    headers: Mapping[str, str],
-    config: ProxyConfig | None = None,
-) -> dict[str, str]:
+def apply_proxy_headers(headers: Mapping[str, str],
+                        config: ProxyConfig | None = None) -> dict[str, str]:
     """Return the headers of a request that travels through ``config``.
 
     Hop by hop headers belong to a single connection and are never
     forwarded to the server behind the proxy.
     """
-    result = {
-        name: value
-        for name, value in headers.items()
-        if name.lower() not in HOP_BY_HOP_HEADERS
-    }
+    result = {name: value for name, value in headers.items()
+              if name.lower() not in HOP_BY_HOP_HEADERS}
     if config is None:
         return result
     authorization = config.authorization_header()

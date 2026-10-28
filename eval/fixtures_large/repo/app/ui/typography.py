@@ -42,11 +42,7 @@ class SelectionMetrics:
     line_count: int
 
 
-DEFAULT_METRICS = FontMetrics(
-    size_pt=15.0,
-    line_height_pt=20.0,
-    average_char_width_pt=7.5,
-)
+DEFAULT_METRICS = FontMetrics(size_pt=15.0, line_height_pt=20.0, average_char_width_pt=7.5)
 
 
 def measure_selection(

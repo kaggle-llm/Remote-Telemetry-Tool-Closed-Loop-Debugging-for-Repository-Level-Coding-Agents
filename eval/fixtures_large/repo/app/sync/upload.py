@@ -33,9 +33,8 @@ class UploadTransport(Protocol):
 class Uploader:
     """Uploads a document in chunks and reports the progress.
 
-    Every upload carries an idempotency key, so a chunk that is sent
-    again after a transient failure is stored only once and a retry of a
-    failed upload never creates a second copy of the document.
+    Every upload carries an idempotency key, so a chunk that is sent again
+    after a transient failure never creates a second copy of the document.
     """
 
     def __init__(self, transport: UploadTransport, *, chunk_size: int = 256_000) -> None:
@@ -55,24 +54,15 @@ class Uploader:
 
     def chunks(self, payload: bytes) -> list[bytes]:
         """Split ``payload`` into the chunks that are sent to the server."""
-        return [
-            payload[start:start + self._chunk_size]
-            for start in range(0, len(payload), self._chunk_size)
-        ]
+        size = self._chunk_size
+        return [payload[start:start + size] for start in range(0, len(payload), size)]
 
-    def upload(
-        self,
-        document_id: str,
-        payload: bytes,
-        *,
-        revision: int = 0,
-        on_progress: Callable[[UploadProgress], None] | None = None,
-    ) -> UploadProgress:
+    def upload(self, document_id: str, payload: bytes, *, revision: int = 0,
+               on_progress: Callable[[UploadProgress], None] | None = None) -> UploadProgress:
         """Upload ``payload`` and report the final progress.
 
         The same idempotency key is used for every chunk of one upload,
-        so the server can recognise a chunk that arrives twice and keep
-        a single copy of the document.
+        so the server recognises a chunk that arrives twice.
         """
         key = self.idempotency_key(document_id, revision)
         total_bytes = len(payload)

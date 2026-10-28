@@ -56,23 +56,16 @@ class AnnotationToolbar:
 
     def __init__(self, palette: HighlightPalette) -> None:
         self._actions = build_toolbar_actions(palette)
-        self._last_triggered: str | None = None
 
     @property
     def actions(self) -> tuple[ToolbarAction, ...]:
         """The buttons of the toolbar in display order."""
         return self._actions
 
-    @property
-    def last_triggered(self) -> str | None:
-        """Identifier of the button that was used last."""
-        return self._last_triggered
-
     def trigger(self, identifier: str) -> bool:
         """Use the button called ``identifier``."""
         for action in self._actions:
             if action.identifier == identifier:
-                self._last_triggered = identifier
                 action.trigger()
                 return True
         return False
