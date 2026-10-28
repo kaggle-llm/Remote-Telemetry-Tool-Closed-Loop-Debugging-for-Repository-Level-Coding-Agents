@@ -51,8 +51,11 @@ class TelemetryAPIClient:
         )
         try:
             with urlopen(request, timeout=self.timeout) as response:
+                declared = response.headers.get("Content-Length", "")
+                if declared.isdigit() and int(declared) > MAX_RESPONSE_BYTES:
+                    raise TelemetryError("Telemetry response exceeded the configured size limit.")
                 payload = response.read(MAX_RESPONSE_BYTES + 1)
-        except (HTTPError, URLError, TimeoutError) as exc:
+        except (HTTPError, URLError, TimeoutError, ConnectionResetError) as exc:
             # Do not include response body or credentials in tool-visible errors.
             raise TelemetryError("Telemetry service request failed.") from exc
         if len(payload) > MAX_RESPONSE_BYTES:
