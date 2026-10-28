@@ -41,6 +41,11 @@ from eval.fixture_backend import (  # noqa: E402
 EVAL_OWNER = "eval-owner"
 CONDITIONS = ("A", "B")
 NON_ALNUM = re.compile(r"[^a-z0-9]+")
+STOPWORDS = {
+    "a", "an", "the", "no", "not", "without", "is", "are", "was", "were", "be", "to",
+    "of", "in", "on", "for", "and", "or", "that", "it", "its", "this", "with", "from",
+    "by", "as", "at", "has", "have", "had", "when", "then", "than", "but", "so",
+}
 
 
 def load_tasks(fixtures_dir: Path):
@@ -144,6 +149,18 @@ def normalize_compact(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", (text or "").lower())
 
 
+def key_tokens(phrase: str):
+    tokens = [token for token in normalize(phrase).split() if token]
+    meaningful = [token for token in tokens if token not in STOPWORDS]
+    return meaningful or tokens
+
+
+def phrase_matches(phrase: str, claim_tokens, claim_compact: str) -> bool:
+    if normalize_compact(phrase) and normalize_compact(phrase) in claim_compact:
+        return True
+    return all(token in claim_tokens for token in key_tokens(phrase))
+
+
 def adjudicate(task, answer: str):
     """Rule-based, condition-blind adjudication against the frozen answer key."""
     lines = [line.strip() for line in (answer or "").splitlines()]
@@ -155,14 +172,14 @@ def adjudicate(task, answer: str):
     root_cause_text = " ".join(root_cause_lines)
     body = normalize(answer)
     claim = normalize(root_cause_text) if root_cause_text else ""
-    compact_claim = normalize_compact(root_cause_text) if root_cause_text else ""
-    keys = [normalize(phrase) for phrase in task.get("adjudication_key", []) if normalize(phrase)]
-    matched = [
-        phrase for phrase in keys
-        if phrase in claim or normalize_compact(phrase) in compact_claim
-    ]
+    claim_compact = normalize_compact(root_cause_text) if root_cause_text else ""
+    claim_tokens = set(claim.split())
+    keys = [phrase for phrase in task.get("adjudication_key", []) if normalize(phrase)]
+    matched = [phrase for phrase in keys if phrase_matches(phrase, claim_tokens, claim_compact)]
     if not matched and not root_cause_text:
-        matched = [phrase for phrase in keys if phrase in body]
+        body_tokens = set(body.split())
+        body_compact = normalize_compact(answer)
+        matched = [phrase for phrase in keys if phrase_matches(phrase, body_tokens, body_compact)]
     module_stem = Path(task.get("target_module", "")).stem.lower()
     module_mentioned = bool(module_stem) and module_stem in normalize(answer).replace(" ", "")
     return {
@@ -378,12 +395,14 @@ def main():
     parser.add_argument("--seed", type=int, default=20261028)
     parser.add_argument("--tasks", default="", help="Comma separated task ids to run")
     parser.add_argument("--out-dir", default=str(ROOT / "eval" / "results"))
+    parser.add_argument("--fixtures-dir", default=str(ROOT / "eval" / "fixtures"), help="Fixture root containing cases.json, repo/ and validation/")
+    parser.add_argument("--adjudicate-only", action="store_true", help="Re-adjudicate saved runs with the current rubric and rewrite the summary")
     args = parser.parse_args()
 
     if args.repeats < 1 or args.max_iterations < 1:
         raise SystemExit("--repeats and --max-iterations must be positive.")
 
-    fixtures_dir = ROOT / "eval" / "fixtures"
+    fixtures_dir = Path(args.fixtures_dir)
     tasks = load_tasks(fixtures_dir)
     if args.tasks:
         wanted = {item.strip() for item in args.tasks.split(",") if item.strip()}
@@ -395,6 +414,34 @@ def main():
     client = OpenAI(base_url=args.ollama_url, api_key="ollama", timeout=300)
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.adjudicate_only:
+        runs_path = out_dir / "ab_runs.json"
+        if not runs_path.is_file():
+            raise SystemExit(f"Missing {runs_path}")
+        payload = json.loads(runs_path.read_text(encoding="utf-8"))
+        by_id = {task["task_id"]: task for task in tasks}
+        for run in payload.get("runs", []):
+            task = by_id.get(run["task_id"])
+            if not task:
+                continue
+            verdict = adjudicate(task, run.get("answer", ""))
+            run["diagnostic_accurate"] = verdict["diagnostic_accurate"]
+            run["matched_phrases"] = verdict["matched_phrases"]
+            run["module_mentioned"] = verdict["module_mentioned"]
+            run["root_cause_statement"] = verdict["root_cause_statement"]
+        runs = payload.get("runs", [])
+        summary = summarize(runs, args.seed)
+        summary["model"] = payload.get("model", args.model)
+        summary["seed"] = payload.get("seed", args.seed)
+        summary["repeats"] = payload.get("repeats", args.repeats)
+        payload["runs"] = runs
+        runs_path.write_text(json.dumps(payload, indent=2), encoding="utf-8", newline="\n")
+        (out_dir / "ab_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8", newline="\n")
+        write_markdown(summary, out_dir / "ab_summary.md", summary["model"], summary["seed"], summary["repeats"])
+        print(json.dumps(summary["resolution"], indent=2))
+        print(json.dumps(summary["diagnostic_accuracy"], indent=2))
+        return
 
     schedule = []
     for task in tasks:

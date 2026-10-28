@@ -1,0 +1,93 @@
+{
+  "pairs": 18,
+  "resolution": {
+    "a_success": 10,
+    "b_success": 10,
+    "both_pass": 8,
+    "neither": 6,
+    "b_only": 2,
+    "a_only": 2,
+    "mcnemar_exact_p": 1.0
+  },
+  "diagnostic_accuracy": {
+    "a_accurate": 5,
+    "b_accurate": 6,
+    "both_accurate": 3,
+    "b_only": 3,
+    "a_only": 2,
+    "mcnemar_exact_p": 1.0
+  },
+  "localization": {
+    "a_mentioned": 14,
+    "b_mentioned": 13,
+    "b_only": 0,
+    "a_only": 1,
+    "mcnemar_exact_p": 1.0
+  },
+  "token_delta_b_minus_a": {
+    "mean": 896.8333333333334,
+    "low": -2443.1111111111113,
+    "high": 4475.388888888889
+  },
+  "duration_delta_b_minus_a": {
+    "mean": 1.8733333333333337,
+    "low": -6.045,
+    "high": 10.949444444444445
+  },
+  "telemetry_fetches": {
+    "a": 10,
+    "b": 7
+  },
+  "edits": {
+    "a": 20,
+    "b": 21
+  },
+  "per_task": {
+    "t6_media_player_decoder_error": {
+      "pairs": 3,
+      "a_success": 1,
+      "b_success": 1,
+      "a_accurate": 0,
+      "b_accurate": 0
+    },
+    "t5_auth_cache_stale_entry": {
+      "pairs": 3,
+      "a_success": 0,
+      "b_success": 2,
+      "a_accurate": 1,
+      "b_accurate": 2
+    },
+    "t2_imageloader_request_timeout": {
+      "pairs": 3,
+      "a_success": 3,
+      "b_success": 2,
+      "a_accurate": 0,
+      "b_accurate": 1
+    },
+    "t3_anchor_page_out_of_range": {
+      "pairs": 3,
+      "a_success": 3,
+      "b_success": 2,
+      "a_accurate": 3,
+      "b_accurate": 1
+    },
+    "t4_retry_idempotency_key": {
+      "pairs": 3,
+      "a_success": 0,
+      "b_success": 0,
+      "a_accurate": 0,
+      "b_accurate": 0
+    },
+    "t1_palette_presentation_context": {
+      "pairs": 3,
+      "a_success": 3,
+      "b_success": 3,
+      "a_accurate": 1,
+      "b_accurate": 2
+    }
+  },
+  "model": "iandiii/gemma4:e4b-64k",
+  "seed": 20261028,
+  "repeats": 3,
+  "wall_clock_seconds": 1684.9
+}
