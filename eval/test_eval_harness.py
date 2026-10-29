@@ -14,6 +14,7 @@ from eval.agent_loop import Workspace  # noqa: E402
 from eval.eval_runner import (  # noqa: E402
     adjudicate,
     bootstrap_mean_ci,
+    derive_trial_seed,
     mcnemar_exact,
     prepare_workspace,
     run_public_tests,
@@ -179,6 +180,21 @@ class StatisticsTests(unittest.TestCase):
         result = bootstrap_mean_ci(values, seed=7, iterations=2000)
         self.assertLessEqual(result["low"], result["mean"])
         self.assertGreaterEqual(result["high"], result["mean"])
+
+
+class TrialSeedTests(unittest.TestCase):
+    def test_seed_is_stable_for_the_same_pair(self):
+        first = derive_trial_seed(20261028, "t1_palette_presentation_context", 1)
+        second = derive_trial_seed(20261028, "t1_palette_presentation_context", 1)
+        self.assertEqual(first, second)
+        self.assertGreater(first, 0)
+        self.assertLess(first, 2**31 - 1)
+
+    def test_repeats_and_tasks_get_different_seeds(self):
+        base = derive_trial_seed(20261028, "t1_palette_presentation_context", 1)
+        self.assertNotEqual(base, derive_trial_seed(20261028, "t1_palette_presentation_context", 2))
+        self.assertNotEqual(base, derive_trial_seed(20261028, "t2_imageloader_request_timeout", 1))
+        self.assertNotEqual(base, derive_trial_seed(20261029, "t1_palette_presentation_context", 1))
 
 
 class WorkspaceTests(unittest.TestCase):

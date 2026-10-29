@@ -12,6 +12,7 @@ rubric that cannot observe the condition.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -190,7 +191,18 @@ def adjudicate(task, answer: str):
     }
 
 
-def run_trial(task, condition, repeat, fixtures_dir, validation_file, client, model, max_iterations, temperature):
+def derive_trial_seed(base_seed: int, task_id: str, repeat: int) -> int:
+    """Derive a stable per-pair sampling seed.
+
+    Both conditions of a pair share the seed, so the only systematic difference
+    between them is the telemetry channel; different repeats get different
+    seeds, so repeats are reproducible independent draws.
+    """
+    digest = hashlib.sha256(f"{base_seed}|{task_id}|{repeat}".encode("utf-8")).hexdigest()
+    return int(digest[:8], 16) % (2**31 - 1)
+
+
+def run_trial(task, condition, repeat, fixtures_dir, validation_file, client, model, max_iterations, temperature, seed=None):
     workspace_dir = Path(tempfile.mkdtemp(prefix="papertrack-eval-"))
     store, case_id, key = seed_store(task, condition)
     previous_domain = os.environ.get("TELEMETRY_DOMAIN")
@@ -212,6 +224,7 @@ def run_trial(task, condition, repeat, fixtures_dir, validation_file, client, mo
             model,
             max_iterations=max_iterations,
             temperature=temperature,
+            seed=seed,
         )
         shutil.copyfile(validation_file, workspace_dir / "tests" / "test_validation.py")
         validation = run_validation_test(workspace_dir, task["validation_test"])
@@ -234,6 +247,7 @@ def run_trial(task, condition, repeat, fixtures_dir, validation_file, client, mo
         "repeat": repeat,
         "condition": condition,
         "model": model,
+        "seed": seed,
         "case_id": case_id,
         "resolution_success": bool(validation["passed"]),
         "public_tests_passed": bool(public["passed"]),
@@ -453,7 +467,11 @@ def main():
     runs = []
     started = time.perf_counter()
     for index, (task, repeat, condition) in enumerate(schedule, start=1):
-        print(f"[{index}/{len(schedule)}] {task['task_id']} repeat {repeat} condition {condition}", flush=True)
+        trial_seed = derive_trial_seed(args.seed, task["task_id"], repeat)
+        print(
+            f"[{index}/{len(schedule)}] {task['task_id']} repeat {repeat} condition {condition} seed {trial_seed}",
+            flush=True,
+        )
         try:
             result = run_trial(
                 task,
@@ -465,6 +483,7 @@ def main():
                 args.model,
                 args.max_iterations,
                 args.temperature,
+                seed=trial_seed,
             )
         except Exception as exc:
             result = {
@@ -472,6 +491,7 @@ def main():
                 "repeat": repeat,
                 "condition": condition,
                 "model": args.model,
+                "seed": trial_seed,
                 "error": f"{type(exc).__name__}: {exc}",
                 "resolution_success": False,
                 "diagnostic_accurate": False,
@@ -494,6 +514,7 @@ def main():
                 "status": "paired_pilot",
                 "model": args.model,
                 "seed": args.seed,
+                "seed_policy": "per-pair sampling seed derived from the run seed and shared by both conditions",
                 "repeats": args.repeats,
                 "isolation": "local fixture backend with synthetic case ids and rows",
                 "run_at_utc": datetime.now(timezone.utc).isoformat(),

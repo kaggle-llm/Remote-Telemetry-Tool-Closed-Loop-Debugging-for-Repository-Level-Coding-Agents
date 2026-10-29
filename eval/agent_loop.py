@@ -254,7 +254,7 @@ def _tool_result(name, arguments, workspace):
     raise ValueError(f"Unknown tool: {name}")
 
 
-def run_agent_trial(task, case_id, workspace, client, model, max_iterations=12, temperature=0.0):
+def run_agent_trial(task, case_id, workspace, client, model, max_iterations=12, temperature=0.0, seed=None):
     """Run one evaluation trial and return the transcript summary."""
     user_prompt = (
         f"Reported failure: {task['report']}\n\n"
@@ -276,14 +276,18 @@ def run_agent_trial(task, case_id, workspace, client, model, max_iterations=12, 
     termination = "max_iterations"
     started = time.perf_counter()
 
+    request = {
+        "model": model,
+        "messages": messages,
+        "tools": TOOL_SCHEMAS,
+        "tool_choice": "auto",
+        "temperature": temperature,
+    }
+    if seed is not None:
+        request["seed"] = seed
+
     for _ in range(max_iterations):
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            tools=TOOL_SCHEMAS,
-            tool_choice="auto",
-            temperature=temperature,
-        )
+        response = client.chat.completions.create(**request)
         message = response.choices[0].message
         messages.append(message.model_dump(exclude_none=True))
         if response.usage:
