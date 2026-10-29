@@ -114,7 +114,7 @@ def main():
         if (c_a, c_b, c_p, l_a, l_b, l_p) != expected_c:
             failures.append(f"diagnostic sentence: draft {(c_a, c_b, c_p, l_a, l_b, l_p)} != runs {expected_c}")
 
-    localization = re.search(r"localization was no better \(p = ([\d.]+) and p = ([\d.]+)\)", text)
+    localization = re.search(r"localization was indistinguishable \(p = ([\d.]+) in both\)", text)
     if not localization:
         failures.append("localization p-values not found")
     else:
@@ -122,16 +122,19 @@ def main():
             f"{compact['localization']['mcnemar_exact_p']:.3f}",
             f"{larger['localization']['mcnemar_exact_p']:.3f}",
         )
-        if localization.groups() != expected_p:
-            failures.append(f"localization p-values: draft {localization.groups()} != runs {expected_p}")
+        if localization.group(1) not in expected_p:
+            failures.append(f"localization p-value: draft {localization.group(1)} != runs {sorted(expected_p)}")
 
-    resolution = re.search(r"exact McNemar p = ([\d.]+) for both", text)
+    resolution = re.search(r"exact McNemar p = ([\d.]+) for the compact and ([\d.]+) for the larger", text)
     if not resolution:
-        failures.append("resolution p-value not found")
+        failures.append("resolution p-values not found")
     else:
-        expected_p = {f"{s['resolution']['mcnemar_exact_p']:.3f}" for s in (compact, larger)}
-        if resolution.group(1) not in expected_p:
-            failures.append(f"resolution p-value: draft {resolution.group(1)} != runs {sorted(expected_p)}")
+        expected_p = (
+            f"{compact['resolution']['mcnemar_exact_p']:.3f}",
+            f"{larger['resolution']['mcnemar_exact_p']:.3f}",
+        )
+        if resolution.groups() != expected_p:
+            failures.append(f"resolution p-values: draft {resolution.groups()} != runs {expected_p}")
 
     tokens = re.search(
         r"was (−?[\d,]+) in the compact variant \(95% bootstrap CI (−?[\d,]+) to (−?[\d,]+)\) and (−?[\d,]+) in the larger one \((−?[\d,]+) to (−?[\d,]+)\)",
@@ -152,7 +155,7 @@ def main():
         if (c_mean, c_low, c_high, l_mean, l_low, l_high) != expected_tokens:
             failures.append(f"token sentence: draft {tokens.groups()} != runs {expected_tokens}")
 
-    for stale in (r"\b18 pairs\b", r"\b36 paired trials\b", r"18/18", r"\brepeats 3\b"):
+    for stale in (r"\b18 pairs\b", r"\b36 paired trials\b", r"18/18", r"\brepeats 3\b", r"\b3 repeats each\b"):
         if re.search(stale, text):
             failures.append(f"stale value still in the draft: {stale}")
 

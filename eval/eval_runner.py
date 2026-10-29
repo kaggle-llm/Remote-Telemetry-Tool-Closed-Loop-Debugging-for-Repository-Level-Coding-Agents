@@ -12,6 +12,7 @@ rubric that cannot observe the condition.
 from __future__ import annotations
 
 import argparse
+import gc
 import hashlib
 import json
 import math
@@ -200,6 +201,15 @@ def derive_trial_seed(base_seed: int, task_id: str, repeat: int) -> int:
     """
     digest = hashlib.sha256(f"{base_seed}|{task_id}|{repeat}".encode("utf-8")).hexdigest()
     return int(digest[:8], 16) % (2**31 - 1)
+
+
+def missing_trials(schedule, stored_runs):
+    """Return the scheduled trials that are not present in the stored runs."""
+    done = {
+        (run.get("task_id"), run.get("repeat"), run.get("condition"))
+        for run in stored_runs
+    }
+    return [item for item in schedule if (item[0]["task_id"], item[1], item[2]) not in done]
 
 
 def run_trial(task, condition, repeat, fixtures_dir, validation_file, client, model, max_iterations, temperature, seed=None):
@@ -411,6 +421,7 @@ def main():
     parser.add_argument("--out-dir", default=str(ROOT / "eval" / "results"))
     parser.add_argument("--fixtures-dir", default=str(ROOT / "eval" / "fixtures"), help="Fixture root containing cases.json, repo/ and validation/")
     parser.add_argument("--adjudicate-only", action="store_true", help="Re-adjudicate saved runs with the current rubric and rewrite the summary")
+    parser.add_argument("--resume", action="store_true", help="Run only the trials that are missing from the stored runs")
     args = parser.parse_args()
 
     if args.repeats < 1 or args.max_iterations < 1:
@@ -465,11 +476,23 @@ def main():
     random.Random(args.seed).shuffle(schedule)
 
     runs = []
+    if args.resume:
+        runs_path = out_dir / "ab_runs.json"
+        if runs_path.is_file():
+            stored = json.loads(runs_path.read_text(encoding="utf-8"))
+            runs = stored.get("runs", [])
+            schedule = missing_trials(schedule, runs)
+            print(
+                f"Resuming: {len(runs)} trials already stored, {len(schedule)} remaining.",
+                flush=True,
+            )
+
+    total = len(runs) + len(schedule)
     started = time.perf_counter()
     for index, (task, repeat, condition) in enumerate(schedule, start=1):
         trial_seed = derive_trial_seed(args.seed, task["task_id"], repeat)
         print(
-            f"[{index}/{len(schedule)}] {task['task_id']} repeat {repeat} condition {condition} seed {trial_seed}",
+            f"[{len(runs) + index}/{total}] {task['task_id']} repeat {repeat} condition {condition} seed {trial_seed}",
             flush=True,
         )
         try:
@@ -509,6 +532,7 @@ def main():
             f"seconds={result.get('duration_seconds')}",
             flush=True,
         )
+        gc.collect()
         (out_dir / "ab_runs.json").write_text(
             json.dumps({
                 "status": "paired_pilot",

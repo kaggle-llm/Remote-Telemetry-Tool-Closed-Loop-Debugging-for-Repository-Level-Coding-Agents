@@ -16,6 +16,7 @@ from eval.eval_runner import (  # noqa: E402
     bootstrap_mean_ci,
     derive_trial_seed,
     mcnemar_exact,
+    missing_trials,
     prepare_workspace,
     run_public_tests,
     run_validation_test,
@@ -195,6 +196,23 @@ class TrialSeedTests(unittest.TestCase):
         self.assertNotEqual(base, derive_trial_seed(20261028, "t1_palette_presentation_context", 2))
         self.assertNotEqual(base, derive_trial_seed(20261028, "t2_imageloader_request_timeout", 1))
         self.assertNotEqual(base, derive_trial_seed(20261029, "t1_palette_presentation_context", 1))
+
+
+class ResumeTests(unittest.TestCase):
+    def test_only_missing_trials_are_scheduled(self):
+        task = {"task_id": "t1"}
+        schedule = [(task, 1, "A"), (task, 1, "B"), (task, 2, "A")]
+        stored = [{"task_id": "t1", "repeat": 1, "condition": "A"}]
+        self.assertEqual(
+            missing_trials(schedule, stored),
+            [(task, 1, "B"), (task, 2, "A")],
+        )
+
+    def test_completed_schedule_has_nothing_left(self):
+        task = {"task_id": "t1"}
+        schedule = [(task, 1, "A")]
+        stored = [{"task_id": "t1", "repeat": 1, "condition": "A"}]
+        self.assertEqual(missing_trials(schedule, stored), [])
 
 
 class WorkspaceTests(unittest.TestCase):
