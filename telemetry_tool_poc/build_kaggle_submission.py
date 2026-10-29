@@ -44,6 +44,10 @@ def main():
     )
     (OUTPUT_DIR / "writeup.md").write_text(text, encoding="utf-8", newline="\n")
 
+    body = text.split("\n", 1)[1].lstrip("\n")
+    body = re.sub(r"^\*[^*]+\*\n\n", "", body)
+    (OUTPUT_DIR / "writeup_body.md").write_text(body, encoding="utf-8", newline="\n")
+
     prose = len(prose_words(text))
     raw = len(raw_tokens(text))
     report = (
