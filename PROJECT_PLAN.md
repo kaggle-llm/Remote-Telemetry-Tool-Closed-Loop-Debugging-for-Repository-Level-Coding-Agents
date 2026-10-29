@@ -1,46 +1,46 @@
-# Google - The Gemma 4 Developer Agent Paper Track: Proje Analizi ve Yol Haritası
+# Google - The Gemma 4 Developer Agent Paper Track: Project Analysis and Roadmap
 
-## 1. Proje Amacı (The Goal)
-**Google - The Gemma 4 Developer Agent Paper Track** yarışmasının temel amacı, devasa bulut tabanlı API modellerine bağımlı kalmadan, **Gemma 4** açık ağırlıklı (open-weight) modellerini (özellikle `gemma-4-31b`, `12b`, `e4b`, `e2b` QAT W4A16 varyantları) günlük tüketici donanımında veya çevrimdışı ortamlarda çalışabilecek **özerk yazılım mühendisliği ajanlarına (autonomous software engineering agents)** dönüştürmektir.
+## 1. Project Goal (The Goal)
+The core aim of the **Google - The Gemma 4 Developer Agent Paper Track** competition is to turn **Gemma 4** open-weight models (especially the `gemma-4-31b`, `12b`, `e4b`, `e2b` QAT W4A16 variants) into **autonomous software engineering agents** that can run on everyday consumer hardware or in offline environments, without depending on very large cloud-hosted API models.
 
-Paper Track (Makale Kulübü/Pistinin) amacı ise kodlama lider tablosundan bağımsız olarak; bu süreçteki yöntemleri, fine-tuning/RL yaklaşımlarını, kod anlama/görselleştirme tekniklerini, deneyleri ve analizleri içeren orijinal bir araştırma makalesi (Kaggle Writeup, max 3,000 kelime) sunmaktır.
+The aim of the Paper Track (the paper lane) is, independently of the coding leaderboard, to submit an original research paper (a Kaggle writeup, max 3,000 words) covering the methods used in this process, fine-tuning/RL approaches, code understanding and visualization techniques, experiments and analyses.
 
 ---
 
-## 2. İstenenler (Requirements & Deliverables)
-* **Araştırma Yazısı (Kaggle Writeup / PDF):** En fazla 3.000 kelimeden oluşan; Özet, Giriş, Yöntemler, Deneyler, İlgili Çalışmalar ve Sonuç bölümlerini içeren özgün araştırma metni.
-* **Değerlendirme Kriterleri (0-5 Puan):**
-  1. *Yenilik (Novelty):* Mevcut yöntemlere kıyasla yeni içgörüler ve katkılar.
-  2. *Kalite (Quality):* Yaklaşımın yarışma dışına genelleştirilebilirliği.
-  3. *İlgililik (Relevance):* Yazılım mühendisliği ve ajan öğrenimi için önemi.
-  4. *Doğrulanabilirlik (Verifiability):* Deneylerin, verilerin ve metotların şeffaflığı.
-  5. *Açıklık (Clarity):* Makalenin anlatım ve yapı kalitesi.
-* **Ödül Kategorileri:**
+## 2. Requirements and Deliverables
+* **Research paper (Kaggle Writeup / PDF):** An original research text of at most 3,000 words, containing Abstract, Introduction, Methods, Experiments, Related Work and Conclusion sections.
+* **Evaluation criteria (0-5 points each):**
+  1. *Novelty:* New insights and contributions compared with existing methods.
+  2. *Quality:* How well the approach generalizes beyond the competition itself.
+  3. *Relevance:* Importance for software engineering and agent learning.
+  4. *Verifiability:* Transparency of experiments, data and methods.
+  5. *Clarity:* Quality of the writing and structure.
+* **Award categories:**
   * *Overall Best Paper* ($15,000)
-  * *Best New Resource* ($10,000 - Veri seti, araç, kütüphane vb.)
-  * *Best New Application* ($10,000 - Yeni kullanım alanı / uygulama)
+  * *Best New Resource* ($10,000 - dataset, tool, library, etc.)
+  * *Best New Application* ($10,000 - new use case / application)
 
 ---
 
-## 3. Adım Adım Plan (Step-by-Step Plan)
+## 3. Step-by-Step Plan
 
-### Adım 1: Araştırma Odağının Seçilmesi (Research Focus Selection)
-* **Seçenek A (Tuning & PEFT/RL):** Gemma 4 küçük/büyük modelleri üzerinde QLoRA / Test-Feedback-Driven (TFD) fine-tuning optimizasyonları.
-* **Seçenek B (Code Comprehension & Graph Reasoning):** Büyük repolarda kod grafiği (code-graph) analizi, simge arama ve token bütçesi yönetimi.
-* **Seçenek C (Small Model Efficiency):** Gemma E4B veya E2B modelleri ile uç cihazlarda (edge/consumer hardware) yüksek performanslı ajan davranışı.
+### Step 1: Selecting the Research Focus
+* **Option A (Tuning & PEFT/RL):** QLoRA / test-feedback-driven (TFD) fine-tuning optimizations on small and large Gemma 4 models.
+* **Option B (Code Comprehension & Graph Reasoning):** Code-graph analysis in large repositories, symbol search and token budget management.
+* **Option C (Small Model Efficiency):** High-performance agent behavior with Gemma E4B or E2B models on edge and consumer hardware.
 
-### Adım 2: Deney Altyapısının Kurulması (Environment & Harness Setup)
-* Google ADK (Agent Development Kit) ve vLLM tabanlı yerel test ortamının hazırlanması.
-* Açık kaynaklı veri setlerinin (ör. TFD trajectories, run logs) incelenmesi ve yerel simülasyonların çalıştırılması.
+### Step 2: Setting Up the Experiment Environment and Harness
+* Preparing a local test environment based on Google ADK (Agent Development Kit) and vLLM.
+* Reviewing open datasets (e.g. TFD trajectories, run logs) and running local simulations.
 
-### Adım 3: Deneylerin Koşulması ve Metriklerin Toplanması (Execution & Benchmarking)
-* Seçilen hipotez doğrultusunda ajan denemelerinin yapılması (başarı oranları, tool-call hataları, context overflow durumları).
-* Sonuçların CSV/JSON formatında toplanıp görselleştirilmesi (Grafikler ve tablolar).
+### Step 3: Running Experiments and Collecting Metrics
+* Running agent trials along the selected hypothesis (success rates, tool-call errors, context overflow cases).
+* Collecting results in CSV/JSON format and visualizing them (charts and tables).
 
-### Adım 4: Makale Taslağının Yazılması (Drafting the Writeup)
-* Abstract, Introduction, Methodology, Experiments, Discussion ve Conclusion bölümlerinin 3.000 kelimeyi aşmayacak şekilde yapılandırılması.
-* Şekil ve tabloların eklenmesi.
+### Step 4: Writing the Paper Draft
+* Structuring the Abstract, Introduction, Methodology, Experiments, Discussion and Conclusion sections so they stay under 3,000 words.
+* Adding figures and tables.
 
-### Adım 5: Son Kontroller ve Kaggle Gönderimi (Final Review & Submission)
-* Yazımın 5 değerlendirme kriterine göre (Novelty, Quality, Relevance, Verifiability, Clarity) optimize edilmesi.
-* Kaggle Paper Track platformuna yüklenmesi (Son tarih: **12 Kasım 2026**).
+### Step 5: Final Review and Kaggle Submission
+* Optimizing the writing against the five evaluation criteria (Novelty, Quality, Relevance, Verifiability, Clarity).
+* Uploading it to the Kaggle Paper Track platform (deadline: **12 November 2026**).

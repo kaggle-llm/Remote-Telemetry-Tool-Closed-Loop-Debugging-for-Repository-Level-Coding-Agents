@@ -1,13 +1,13 @@
 export const CASE_STATE_LABELS = {
-  reported: "Bildirildi",
-  instrumenting: "Ölçüm hazırlanıyor",
-  awaiting_recheck: "Geri bildirim bekleniyor",
-  rechecked: "Yeniden kontrol edildi",
-  patch_ready: "Onay bekliyor",
-  approved: "Onaylandı",
-  rejected: "Reddedildi",
-  resolved: "Çözüldü",
-  abandoned: "Bırakıldı",
+  reported: "Reported",
+  instrumenting: "Preparing instrumentation",
+  awaiting_recheck: "Waiting for re-check",
+  rechecked: "Re-checked",
+  patch_ready: "Waiting for approval",
+  approved: "Approved",
+  rejected: "Rejected",
+  resolved: "Resolved",
+  abandoned: "Abandoned",
 };
 
 export function caseActions(state) {
@@ -23,7 +23,7 @@ export function formatCaseSummary(item) {
   const state = item?.state || "reported";
   return {
     id: item?.id || "",
-    title: item?.title || "(başlıksız vaka)",
+    title: item?.title || "(untitled case)",
     state,
     stateLabel: CASE_STATE_LABELS[state] || state,
     updatedAt: item?.updated_at || null,
@@ -33,7 +33,7 @@ export function formatCaseSummary(item) {
 export function formatInstructions(instructions) {
   if (typeof instructions !== "string") return "";
   const trimmed = instructions.trim();
-  if (!trimmed) return "Agent bu vaka için henüz talimat bırakmadı.";
+  if (!trimmed) return "The agent has not left instructions for this case yet.";
   return trimmed.slice(0, 8000);
 }
 

@@ -1,9 +1,9 @@
-# Gemma 4 Ajanı Aracı Nasıl Çağırır? (Tool Calling Mechanics)
+# How Does the Gemma 4 Agent Call a Tool? (Tool Calling Mechanics)
 
-Gemma 4 gibi açık ağırlıklı ajan modelleri, harici araçları (tools) **Google Agent Development Kit (ADK)** ve standart **Function Calling** mekanizması aracılığıyla otonom olarak çalıştırır. Süreç adım adım şöyledir:
+Open-weight agent models such as Gemma 4 run external tools (functions) autonomously through the **Google Agent Development Kit (ADK)** and the standard **function calling** mechanism. The process works step by step as follows:
 
-## 1. Konfigürasyon Tanımı (`agent.yaml`)
-Ajanın erişebileceği tüm araçlar `agent.yaml` dosyasında fonksiyon imzaları ve açıklamalarıyla belirtilir:
+## 1. Configuration Definition (`agent.yaml`)
+All tools the agent can access are declared in `agent.yaml`, with their function signatures and descriptions:
 ```yaml
 tools:
   - name: fetch_client_logs
@@ -11,12 +11,12 @@ tools:
     entrypoint: telemetry_tool.py:fetch_client_logs
 ```
 
-## 2. Kullanıcı İstemi (User Prompt)
-Kullanıcı ajana şu görevi verir:
+## 2. User Prompt
+The user gives the agent this task:
 > *"Find why the iOS app is crashing and fix the bug."*
 
-## 3. Modelin Niyet Tespiti (Tool Call Generation)
-Gemma 4 modeli, sistem promptunu ve araç tanımlarını okuyarak uzaktaki istemci loglarına ihtiyacı olduğunu anlar ve arka planda bir tool çağrısı üretir:
+## 3. Intent Detection by the Model (Tool Call Generation)
+The Gemma 4 model reads the system prompt and the tool definitions, realizes it needs the remote client logs, and generates a tool call in the background:
 ```json
 {
   "tool": "fetch_client_logs",
@@ -26,10 +26,10 @@ Gemma 4 modeli, sistem promptunu ve araç tanımlarını okuyarak uzaktaki istem
 }
 ```
 
-## 4. Harness Tarafından Çalıştırma ve Geri Besleme
-* Google ADK harness'ı bu JSON isteğini yakalar.
-* `telemetry_tool.py` içindeki `fetch_client_logs(limit=5)` fonksiyonunu Python ortamında çalıştırır.
-* Fonksiyondan dönen log verisi (JSON formatında) modelin bağlamına (context) geri beslenir:
+## 4. Execution and Feedback by the Harness
+* The Google ADK harness intercepts this JSON request.
+* It runs the `fetch_client_logs(limit=5)` function from `telemetry_tool.py` in the Python environment.
+* The log data returned by the function (in JSON format) is fed back into the model's context:
   ```json
   [
     {
@@ -41,5 +41,5 @@ Gemma 4 modeli, sistem promptunu ve araç tanımlarını okuyarak uzaktaki istem
   ]
   ```
 
-## 5. Otonom Eylem (Action & Patch)
-Ajan logdaki hata mesajını okur, kod tabanında ilgili görünüm dosyasını bulur (`grep` / `read`), gerekli düzeltmeyi yapar ve çözümü tamamlar.
+## 5. Autonomous Action (Action and Patch)
+The agent reads the error message in the log, locates the relevant view file in the codebase (`grep` / `read`), applies the required fix and completes the solution.

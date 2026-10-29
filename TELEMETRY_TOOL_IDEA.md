@@ -1,23 +1,23 @@
-# Proje Fikri: Supabase Destekli Uzaktan Loglama ve Telemetri Ajan Aracı (Remote Telemetry Tool)
+# Project Idea: A Supabase-Backed Remote Logging and Telemetry Agent Tool (Remote Telemetry Tool)
 
-## 1. Fikrin Özü
-Lokal ortamda Gemma 4 gibi açık ağırlıklı modellerle geliştirme yaparken, yapay zeka ajanlarının doğrudan erişemediği **iOS/Android istemcileri, mobil uygulamalar veya uzak uç cihazlardaki** çalışma zamanı (runtime) loglarını ve hata izlerini toplayıp ajana sunan özel bir **Tool (Araç)** geliştirmek.
-
----
-
-## 2. Problem ve İhtiyaç
-* **Erişim Kısıtı:** Ajanlar yerel repolarda ve test ortamlarında çalışır; ancak kullanıcıların mobil cihazlarında (iOS client) koşan uygulamalardaki anlık çöküşleri ve logları doğrudan göremezler.
-* **Kör Nokta:** Uzak cihazlardan gelen hataların manuel olarak kopyalanıp ajana aktarılması süreci yavaşlatır ve otonom döngüyü (autonomous loop) kırar.
+## 1. The Core Idea
+Build a dedicated **tool** that collects runtime logs and error traces from **iOS/Android clients, mobile applications, or remote edge devices** that AI agents cannot reach directly, and serves them to the agent while developing with open-weight models such as Gemma 4 in a local environment.
 
 ---
 
-## 3. Çözüm Mimarisi (`RemoteTelemetryTool`)
-1. **Supabase Entegrasyonu:** Mobil istemciler (örn. iOS app), hata ve çalışma zamanı loglarını hafif bir Supabase veritabanına (Realtime / REST API üzerinden) güvenli bir şekilde yazar.
-2. **Özel Ajan Aracı (Custom ADK Tool):** Gemma 4 ajanının konfigürasyonuna (`tools/` veya `agent.yaml`) eklenen özel bir araç (`fetch_client_logs`).
-3. **Otonom Sorgulama:** Ajan, kod tabanında bir değişiklik yaptıktan veya uzak cihazlardan hata bildirimi geldiğinde bu aracı çağırarak güncel istemci loglarını çeker, hatanın kaynağını analiz eder ve otonom olarak düzeltme (patch) üretir.
+## 2. Problem and Need
+* **Access Limitation:** Agents work inside local repositories and test environments; they cannot directly observe the immediate crashes and logs of applications running on users' mobile devices (iOS clients).
+* **Blind Spot:** Manually copying errors from remote devices to the agent slows the process down and breaks the autonomous loop.
 
 ---
 
-## 4. Paper Track İçin Değeri
-* **Best New Resource / Best New Application** kategorileri için mükemmel bir adaydır.
-* Yerel (Edge) ajanların sadece dosya sistemiyle değil, bulut/veritabanı köprüleriyle uzak uç cihazlardan telemetri toplayarak yazılım mühendisliği yeteneklerini nasıl genişletebileceğini kanıtlar.
+## 3. Solution Architecture (`RemoteTelemetryTool`)
+1. **Supabase Integration:** Mobile clients (e.g. an iOS app) safely write error and runtime logs to a lightweight Supabase database (over Realtime / REST API).
+2. **Custom Agent Tool:** A dedicated tool (`fetch_client_logs`) added to the Gemma 4 agent configuration (`tools/` or `agent.yaml`).
+3. **Autonomous Querying:** When the agent makes a change in the codebase or receives an error report from a remote device, it calls this tool to pull the latest client logs, analyzes the source of the error and autonomously produces a patch.
+
+---
+
+## 4. Value for the Paper Track
+* A strong candidate for the *Best New Resource / Best New Application* categories.
+* Demonstrates how local (edge) agents can extend their software engineering capabilities by collecting telemetry from remote edge devices through cloud/database bridges, rather than relying on the file system alone.

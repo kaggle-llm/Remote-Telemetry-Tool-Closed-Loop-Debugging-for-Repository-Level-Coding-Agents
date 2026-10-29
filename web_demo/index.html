@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="tr">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,35 +9,35 @@
 <body>
   <main class="shell">
     <header class="topbar"><a class="wordmark" href="#"><span class="mark">T</span> telemetry<span class="muted">/lab</span></a><div class="top-status"><span class="status-dot connected"></span><span>Secure session telemetry</span></div></header>
-    <section class="intro"><p class="eyebrow">AGENT DEVELOPER CONSOLE</p><h1>Her oturumun<br><em>kendi izi.</em></h1><p class="lede">Google ile giriş yap. Google kimliği backend'de doğrulanır; uygulama kullanıcısı kendi public.users tablomuzda tutulur. Client ingest ve AI developer key'lerini ayrı yönetin.</p></section>
+    <section class="intro"><p class="eyebrow">AGENT DEVELOPER CONSOLE</p><h1>Every session<br><em>leaves a trace.</em></h1><p class="lede">Sign in with Google. The Google identity is verified in the backend; the application user is kept in our own public.users table. Manage client ingest and AI developer keys separately.</p></section>
 
     <section id="login-view" class="panel" hidden>
-      <div class="panel-heading"><div><p class="eyebrow">02 / IDENTITY</p><h2>Hesabına bağlan</h2></div></div>
-      <button id="google-login" class="button button-accent">Google ile giriş yap</button>
-      <p class="hint">Google OAuth uygulama backend’imiz tarafından doğrulanır; Supabase Auth kullanılmaz.</p>
+      <div class="panel-heading"><div><p class="eyebrow">02 / IDENTITY</p><h2>Connect your account</h2></div></div>
+      <button id="google-login" class="button button-accent">Sign in with Google</button>
+      <p class="hint">The Google OAuth application is verified by our backend; Supabase Auth is not used.</p>
     </section>
 
     <section id="dashboard-view" hidden>
-      <section class="panel account-panel"><div><p class="eyebrow">AUTHENTICATED ACCOUNT</p><p id="account-email" class="user-email"></p></div><button id="sign-out" class="button button-light">Çıkış</button></section>
+      <section class="panel account-panel"><div><p class="eyebrow">AUTHENTICATED ACCOUNT</p><p id="account-email" class="user-email"></p></div><button id="sign-out" class="button button-light">Sign out</button></section>
       <div class="workspace">
-        <section class="panel"><div class="panel-heading"><div><p class="eyebrow">01 / INGEST CREDENTIAL</p><h2>Client ingest key</h2></div></div><label>Key adı<input id="ingest-key-name" value="iOS reader client"></label><button id="create-ingest-key" class="button button-accent">Ingest key oluştur</button><div id="ingest-keys" class="key-list"></div><div id="ingest-secret-panel" class="secret-panel" hidden><p>Bu değeri client app'inizin ortamında <code>VITE_TELEMETRY_INGEST_KEY</code> olarak ayarlayın. Tam değer tekrar gösterilmez.</p><code id="new-ingest-secret"></code><button id="copy-ingest-key" class="button button-light">Kopyala</button></div><p class="hint">Client session açma ve event yazma yetkilidir; AI log okuyamaz. Paylaşılmışsa iptal edip yenisini oluştur.</p></section>
-         <section class="panel"><div class="panel-heading"><div><p class="eyebrow">02 / TOOL CREDENTIAL</p><h2>AI developer key</h2></div></div><label>Anahtar adı<input id="api-key-name" value="Developer agent"></label><button id="create-api-key" class="button button-accent">Developer key oluştur</button><div id="api-keys" class="key-list"></div><div id="secret-panel" class="secret-panel" hidden><p>Bu değeri yalnızca AI runtime secret store'unda kullanın; client app'e koymayın.</p><code id="new-secret"></code><button id="copy-api-key" class="button button-light">Kopyala</button></div></section>
-        <section class="panel"><div class="panel-heading"><div><p class="eyebrow">03 / AI RUNS</p><h2>AI oturumları</h2></div></div><p class="hint">AI, her çalıştırmada developer key ile kendi oturumunu açar. Buradan geçmiş oturumları görebilir ve iptal edebilirsin.</p><div id="ai-sessions" class="key-list"></div></section>
+        <section class="panel"><div class="panel-heading"><div><p class="eyebrow">01 / INGEST CREDENTIAL</p><h2>Client ingest key</h2></div></div><label>Key name<input id="ingest-key-name" value="iOS reader client"></label><button id="create-ingest-key" class="button button-accent">Create ingest key</button><div id="ingest-keys" class="key-list"></div><div id="ingest-secret-panel" class="secret-panel" hidden><p>Set this value in your client app environment as <code>VITE_TELEMETRY_INGEST_KEY</code>. The full value is never shown again.</p><code id="new-ingest-secret"></code><button id="copy-ingest-key" class="button button-light">Copy</button></div><p class="hint">It may only open client sessions and write events; the AI cannot read logs. If it is shared, revoke it and create a new one.</p></section>
+         <section class="panel"><div class="panel-heading"><div><p class="eyebrow">02 / TOOL CREDENTIAL</p><h2>AI developer key</h2></div></div><label>Key name<input id="api-key-name" value="Developer agent"></label><button id="create-api-key" class="button button-accent">Create developer key</button><div id="api-keys" class="key-list"></div><div id="secret-panel" class="secret-panel" hidden><p>Use this value only in the AI runtime secret store; never place it in a client app.</p><code id="new-secret"></code><button id="copy-api-key" class="button button-light">Copy</button></div></section>
+        <section class="panel"><div class="panel-heading"><div><p class="eyebrow">03 / AI RUNS</p><h2>AI sessions</h2></div></div><p class="hint">The AI opens its own session with the developer key on every run. You can review and revoke past sessions here.</p><div id="ai-sessions" class="key-list"></div></section>
       </div>
-        <section class="panel logs-panel"><div class="panel-heading logs-heading"><div><p class="eyebrow">03 / AI CLIENT</p><h2>Tool testi</h2></div></div><p class="lede">Bu panel kullanıcı ve key yönetir. AI tool testlerini bağımsız istemci ortamınızdan çalıştırın; developer key’i güvenli secret store’da tutun.</p></section>
+        <section class="panel logs-panel"><div class="panel-heading logs-heading"><div><p class="eyebrow">03 / AI CLIENT</p><h2>Tool test</h2></div></div><p class="lede">This panel manages the user and keys. Run AI tool tests from your own client environment; keep the developer key in a secure secret store.</p></section>
         <section class="panel cases-panel">
-          <div class="panel-heading"><div><p class="eyebrow">04 / DEBUG CASES</p><h2>Debug vakaları</h2></div><button id="refresh-cases" class="button button-light">Yenile</button></div>
-          <p class="hint">Agent'in istediği remote-debug geri bildirimini buradan gönderin; hazır olan yamayı onaylayın veya reddedin. Onay verilmeden vaka logları silinmez.</p>
+          <div class="panel-heading"><div><p class="eyebrow">04 / DEBUG CASES</p><h2>Debug cases</h2></div><button id="refresh-cases" class="button button-light">Refresh</button></div>
+          <p class="hint">Send the remote-debug feedback the agent asks for here, then approve or reject the prepared patch. Case logs are never deleted without approval.</p>
           <div id="case-list" class="key-list"></div>
           <div id="case-detail" class="case-detail" hidden>
             <div class="case-meta"><span id="case-title" class="case-title"></span><span id="case-state" class="tag"></span></div>
-            <div class="case-block"><p class="eyebrow">AGENT TALİMATI</p><p id="case-instructions" class="case-instructions"></p></div>
+            <div class="case-block"><p class="eyebrow">AGENT INSTRUCTIONS</p><p id="case-instructions" class="case-instructions"></p></div>
             <div class="case-block"><p class="eyebrow">PROBES</p><div id="case-probes" class="case-probes"></div></div>
-            <label>Geribildirim<textarea id="case-report" rows="4" maxlength="4000" placeholder="Cihazda ne gözlemlediniz? Agent'in istediği bilgiyi yazın."></textarea></label>
+            <label>Feedback<textarea id="case-report" rows="4" maxlength="4000" placeholder="What did you observe on the device? Write the information the agent asked for."></textarea></label>
             <div class="case-actions">
-              <button id="send-report" class="button button-accent">Geri bildirim gönder</button>
-              <button id="approve-case" class="button button-accent">Yamayı onayla</button>
-              <button id="reject-case" class="button button-light">Reddet</button>
+              <button id="send-report" class="button button-accent">Send feedback</button>
+              <button id="approve-case" class="button button-accent">Approve the patch</button>
+              <button id="reject-case" class="button button-light">Reject</button>
             </div>
           </div>
         </section>

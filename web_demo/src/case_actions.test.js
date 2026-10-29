@@ -36,13 +36,13 @@ test("terminal cases are flagged as terminal", () => {
 
 test("case summaries fall back to safe defaults", () => {
   const summary = formatCaseSummary({ id: "abc", state: "reported" });
-  assert.equal(summary.title, "(başlıksız vaka)");
-  assert.equal(summary.stateLabel, "Bildirildi");
+  assert.equal(summary.title, "(untitled case)");
+  assert.equal(summary.stateLabel, "Reported");
   assert.equal(formatCaseSummary({ id: "x", state: "unknown_state" }).stateLabel, "unknown_state");
 });
 
 test("instructions are bounded and never empty for the agent view", () => {
-  assert.equal(formatInstructions(""), "Agent bu vaka için henüz talimat bırakmadı.");
+  assert.equal(formatInstructions(""), "The agent has not left instructions for this case yet.");
   assert.equal(formatInstructions("  yama uygula  "), "yama uygula");
   assert.equal(formatInstructions("x".repeat(9000)).length, 8000);
 });

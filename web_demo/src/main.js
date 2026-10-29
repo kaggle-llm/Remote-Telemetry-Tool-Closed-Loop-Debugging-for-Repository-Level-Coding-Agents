@@ -23,7 +23,7 @@ async function api(path, options = {}) {
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
     if (response.status === 500 && payload.code === "42P01") {
-      payload.error = "Supabase tablosu eksik. En güncel supabase_setup.sql dosyasını Supabase SQL Editor'da çalıştırıp yeniden dene.";
+      payload.error = "The Supabase table is missing. Run the latest supabase_setup.sql file in the Supabase SQL Editor and try again.";
     }
     throw new Error(payload.error || `Request failed (${response.status})`);
   }
@@ -33,7 +33,7 @@ async function api(path, options = {}) {
 function renderRows(container, rows, kind) {
   container.replaceChildren();
   if (!rows.length) {
-    container.textContent = kind === "key" ? "Henüz API key yok." : "AI henüz bir session başlatmadı.";
+    container.textContent = kind === "key" ? "There is no API key yet." : "The AI has not started a session yet.";
     return;
   }
   for (const row of rows) {
@@ -41,17 +41,17 @@ function renderRows(container, rows, kind) {
     item.className = "key-row";
     const label = document.createElement("span");
     const prefix = kind === "key" ? row.key_prefix : kind === "ingest" ? row.key_prefix : row.session_prefix;
-    label.textContent = `${row.name} · ${prefix}… · ${row.revoked_at ? "İptal edildi" : "Aktif"}`;
+    label.textContent = `${row.name} · ${prefix}… · ${row.revoked_at ? "Revoked" : "Active"}`;
     const revoke = document.createElement("button");
     revoke.className = "button button-light";
-    revoke.textContent = kind === "session" ? "Kapat" : "İptal et";
+    revoke.textContent = kind === "session" ? "Close" : "Revoke";
     revoke.disabled = Boolean(row.revoked_at);
     revoke.addEventListener("click", async () => {
       try {
         const path = kind === "key" ? "keys" : kind === "ingest" ? "ingest-keys" : "sessions";
         await api(`/api/${path}/${row.id}/revoke`, { method: "POST" });
         await loadDashboard();
-        notify("Anahtar iptal edildi.", "success");
+        notify("The key was revoked.", "success");
       } catch (error) { notify(error.message, "error"); }
     });
     item.append(label, revoke);
@@ -74,7 +74,7 @@ function renderCaseList() {
   const container = $("case-list");
   container.replaceChildren();
   if (!state.cases.length) {
-    container.textContent = "Henüz debug vakası yok.";
+    container.textContent = "There is no debug case yet.";
     return;
   }
   for (const item of state.cases) {
@@ -103,7 +103,7 @@ function renderCaseDetail(detail) {
   const probes = formatProbes(detail.probes);
   const probeBox = $("case-probes");
   probeBox.replaceChildren();
-  if (!probes.length) probeBox.textContent = "Aktif probe yok.";
+  if (!probes.length) probeBox.textContent = "There is no active probe.";
   for (const probe of probes) {
     const item = document.createElement("div");
     item.className = "probe-row";
@@ -138,12 +138,12 @@ async function selectCase(caseId) {
 
 async function sendReport() {
   const report = $("case-report").value.trim();
-  if (!report) { notify("Geri bildirim metni boş olamaz.", "error"); return; }
+  if (!report) { notify("The feedback text cannot be empty.", "error"); return; }
   try {
     await api(`/api/cases/${state.selectedCaseId}/report`, { method: "POST", body: JSON.stringify({ report }) });
     await loadCases();
     await selectCase(state.selectedCaseId);
-    notify("Geri bildirim gönderildi. Vaka yeniden kontrol edildi olarak işaretlendi.", "success");
+    notify("Feedback sent. The case is now marked as re-checked.", "success");
   } catch (error) { notify(error.message, "error"); }
 }
 
@@ -152,7 +152,7 @@ async function decideCase(approved) {
     await api(`/api/cases/${state.selectedCaseId}/approve`, { method: "POST", body: JSON.stringify({ approved }) });
     await loadCases();
     await selectCase(state.selectedCaseId);
-    notify(approved ? "Yama onaylandı. Agent artık logları temizleyebilir." : "Yama reddedildi; vaka yeniden incelemeye dönebilir.", "success");
+    notify(approved ? "The patch was approved. The agent can now clean up the logs." : "The patch was rejected; the case can return to review.", "success");
   } catch (error) { notify(error.message, "error"); }
 }
 
@@ -162,7 +162,7 @@ async function createKey() {
   $("new-secret").textContent = result.secret;
   $("secret-panel").hidden = false;
   await loadDashboard();
-  notify("API key oluşturuldu. Tam değer yalnızca şimdi gösteriliyor.", "success");
+  notify("API key created. The full value is shown only now.", "success");
 }
 
 async function createIngestKey() {
@@ -171,14 +171,14 @@ async function createIngestKey() {
   $("new-ingest-secret").textContent = result.secret;
   $("ingest-secret-panel").hidden = false;
   await loadDashboard();
-  notify("Ingest key oluşturuldu. Yalnızca şimdi gösteriliyor.", "success");
+  notify("Ingest key created. It is shown only now.", "success");
 }
 
 $("google-login").addEventListener("click", () => { window.location.href = "/api/auth/google"; });
 $("create-api-key").addEventListener("click", () => createKey().catch((error) => notify(error.message, "error")));
 $("create-ingest-key").addEventListener("click", () => createIngestKey().catch((error) => notify(error.message, "error")));
-$("copy-api-key").addEventListener("click", async () => { await navigator.clipboard.writeText(state.apiKey || $("new-secret").textContent); notify("API key panoya kopyalandı.", "success"); });
-$("copy-ingest-key").addEventListener("click", async () => { await navigator.clipboard.writeText(state.ingestKey || $("new-ingest-secret").textContent); notify("Ingest key panoya kopyalandı.", "success"); });
+$("copy-api-key").addEventListener("click", async () => { await navigator.clipboard.writeText(state.apiKey || $("new-secret").textContent); notify("The API key was copied to the clipboard.", "success"); });
+$("copy-ingest-key").addEventListener("click", async () => { await navigator.clipboard.writeText(state.ingestKey || $("new-ingest-secret").textContent); notify("The ingest key was copied to the clipboard.", "success"); });
 $("sign-out").addEventListener("click", async () => {
   window.location.href = "/api/auth/logout";
 });
