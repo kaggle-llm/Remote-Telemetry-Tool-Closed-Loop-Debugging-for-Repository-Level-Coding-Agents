@@ -74,7 +74,7 @@ This workspace contains an early-stage research prototype for the **Google - The
 
 ## Current Status
 - Vite dashboard and custom OAuth backend build; Google OAuth/Supabase production configuration has not been exercised end-to-end.
-- Local suites pass: 21 Node server, 7 dashboard logic, 12 Python tool, 14 agent-runner, 20 evaluation-harness, 21 adversarial and 9 probe-runtime tests (104 total).
+- Local suites pass: 21 Node server, 7 dashboard logic, 12 Python tool, 14 agent-runner, 22 evaluation-harness, 21 adversarial and 9 probe-runtime tests (106 total).
 - The closed-loop debugging protocol (debug_cases, case_probes, runtime-selectable probes, cleanup) is implemented in code but not yet run end-to-end against a deployed project.
-- A paired evaluation of the local `iandiii/gemma4:e4b-64k` model (6 synthetic tasks, 3 repeats, two repository variants, 36 paired trials) has been produced; telemetry did not improve repair (exact McNemar p = 1.000 per variant), and the write-up reports that negative result without a general efficacy claim.
+- A paired evaluation of the local `iandiii/gemma4:e4b-64k` model (6 synthetic tasks, 5 repeats, two repository variants, 60 paired trials) has been produced; telemetry did not improve repair (exact McNemar p = 0.754 compact, 0.453 larger), and the write-up reports that negative result without a general efficacy claim.
 - Treat this as a prototype and research proposal, not a production system.

@@ -4,7 +4,7 @@
 
 ## Abstract
 
-Repository-level coding agents read source code and run local tests, but they cannot observe failures on a user's remote device. We present **Remote Telemetry Tool**, a prototype that gives a coding agent task-scoped client telemetry and closes the loop between diagnosis, repair and device-side verification. It combines bounded, redacted retrieval; a server-enforced case state machine the agent cannot skip or approve for the user; and probes published as data and withdrawn at cleanup, so a client emits nothing until asked. We report paired evaluations where the same local Gemma 4 model, prompts, tools and repository copies ran with and without diagnostic telemetry on synthetic client failures, repair decided by a hidden test. Across 36 paired trials in two repository variants telemetry did not improve repair (exact McNemar p = 1.000 in each): it helped where the cause was ambiguous and cost turns where the cause was already visible in the code. The artifact implements the protocol end to end; 104 tests pass, and no deployment-security or production-reliability claim is made.
+Repository-level coding agents read source code and run local tests, but they cannot observe failures on a user's remote device. We present **Remote Telemetry Tool**, a prototype that gives a coding agent task-scoped client telemetry and closes the loop between diagnosis, repair and device-side verification. It combines bounded, redacted retrieval; a server-enforced case state machine the agent cannot skip or approve for the user; and probes published as data and withdrawn at cleanup, so a client emits nothing until asked. We report paired evaluations where the same local Gemma 4 model, prompts, tools and repository copies ran with and without diagnostic telemetry on synthetic client failures, repair decided by a hidden test. Across 60 paired trials in two repository variants telemetry did not improve repair (exact McNemar p = 0.754 and 0.453), left diagnosis within noise (p = 0.344 and 0.210) and cost no measurable context in the compact repository. The artifact implements the protocol end to end; 106 tests pass, and no deployment-security or production-reliability claim is made.
 
 ## 1. Introduction
 
@@ -91,7 +91,7 @@ The device half is a library, not a script. `ai_client_demo/probe_runtime.py` po
 
 ### 5.1 Verification performed
 
-Seven suites run deterministically: dashboard logic (7), server (21), tool (12), agent runner (14), harness (20), adversarial (21) and probe runtime (9). The first four use mocked clients; the last three cover the harness, the adversarial suite and the client runtime. None is a security audit, a concurrency proof, or evidence that a deployment behaves as the mocks do.
+Seven suites run deterministically: dashboard logic (7), server (21), tool (12), agent runner (14), harness (22), adversarial (21) and probe runtime (9). The first four use mocked clients; the last three cover the harness, the adversarial suite and the client runtime. None is a security audit, a concurrency proof, or evidence that a deployment behaves as the mocks do.
 
 ### 5.2 An exploratory run that we do not report as evidence
 
@@ -99,22 +99,22 @@ An earlier three-task run with `gemma4:31b:cloud` is retained in `eval/results/e
 
 ### 5.3 Paired evaluation: task-scoped telemetry against none
 
-We ran the same 6 synthetic tasks with 3 repeats each on two repository variants, giving 18 paired trials per variant (36 in total) on the local fixture backend with `iandiii/gemma4:e4b-64k` (seed 20261028). The compact variant is the application itself; the larger adds ten plausible but wrong modules. Condition A's telemetry was empty, condition B's held the diagnostic events. Within a pair, prompt, tool schemas, repository copy and model were identical, trial order was randomized, repair was decided by the held-out validation test the agent never saw, and root cause was scored by a frozen, condition-blind rubric. Both conditions of a pair shared one fixed sampling seed, so the only systematic difference between them was the telemetry channel.
+We ran the same 6 synthetic tasks with 5 repeats each on two repository variants, giving 30 paired trials per variant (60 in total) on the local fixture backend with `iandiii/gemma4:e4b-64k` (seed 20261028). The compact variant is the application itself; the larger adds ten plausible but wrong modules. Condition A's telemetry was empty, condition B's held the diagnostic events. Within a pair, prompt, tool schemas, repository copy and model were identical, trial order was randomized, repair was decided by the held-out validation test the agent never saw, and root cause was scored by a frozen, condition-blind rubric. Both conditions of a pair shared one fixed sampling seed, so the only systematic difference between them was the telemetry channel.
 
-| Outcome (18 pairs per variant) | Compact A | Compact B | Larger A | Larger B |
+| Outcome (30 pairs per variant) | Compact A | Compact B | Larger A | Larger B |
 | --- | --- | --- | --- | --- |
-| Validation test passed | 10/18 | 10/18 | 6/18 | 5/18 |
-| Root cause matched rubric | 11/18 | 9/18 | 13/18 | 10/18 |
-| Named the responsible module | 14/18 | 13/18 | 14/18 | 11/18 |
-| Telemetry fetches / file edits | 10 / 20 | 7 / 21 | 5 / 29 | 9 / 22 |
+| Validation test passed | 12/30 | 10/30 | 9/30 | 12/30 |
+| Root cause matched rubric | 14/30 | 18/30 | 12/30 | 18/30 |
+| Named the responsible module | 24/30 | 25/30 | 21/30 | 21/30 |
+| Telemetry fetches / file edits | 18 / 47 | 14 / 47 | 15 / 40 | 14 / 32 |
 
 ![Figure 4.](figures/figure_ab_results.png)
 
-Telemetry did not improve repair in either variant (exact McNemar p = 1.000 for both). Diagnosis was worse with telemetry (compact 9/18 against 11/18, p = 0.688; larger 10/18 against 13/18, p = 0.453) and localization was no better (p = 1.000 and p = 0.375). The token difference B − A was 897 in the compact variant (95% bootstrap CI −2,443 to 4,475) and −4,171 in the larger one (−14,009 to 4,965): the context cost is not distinguishable from noise.
+Telemetry did not improve repair in either variant (exact McNemar p = 0.754 for the compact and 0.453 for the larger). Diagnosis was slightly better with telemetry (compact 18/30 against 14/30, p = 0.344; larger 18/30 against 12/30, p = 0.210) and localization was indistinguishable (p = 1.000 in both). The token difference B − A was −165 in the compact variant (95% bootstrap CI −6,883 to 6,569) and −11,182 in the larger one (−19,630 to −3,391): in the compact repository the context cost is noise, and in the larger one condition B spent fewer tokens.
 
-Per task, telemetry helped where the cause was ambiguous and hurt where the code was self-evident. In the compact variant condition B repaired 2 of 3 stale-auth-cache trials against none for condition A, while on the two tasks whose cause is visible in the code condition A repaired 3 of 3 and condition B 2 of 3. In the larger variant the same pattern appeared for the anchor task (A 0/3, B 2 of 3), while the palette task was repaired by neither condition and the retry task only by A (1 of 3).
+Per task the splits are unstable: the anchor task was repaired in 3 of 5 trials by A and in none by B in the compact variant, and in none by A and in 5 of 5 by B in the larger one. The same task splits in opposite directions across variants, so we report no per-task effect. Of 120 trials, 16 exhausted the turn budget and four returned an empty answer; each is recorded as a failure for its condition.
 
-The pilot supports no general claim that telemetry improves repair, and not the hypothesis that it grows more valuable as the repository grows: the extra distractors hurt both conditions. It supports a narrower claim — telemetry is worth fetching when the repository does not identify the cause, and it can waste turns and introduce a wrong diagnosis when the cause is already obvious. With 18 pairs per variant these differences are suggestions, not effects.
+The pilot supports no general claim that telemetry improves repair, and not the hypothesis that it grows more valuable as the repository grows: the extra distractors hurt both conditions. It supports a narrower claim — the channel is cheap in context and can move the diagnosis, but at this sample size the evidence does not say when it helps. With 30 pairs per variant these differences are suggestions, not effects.
 
 ### 5.4 Adversarial and safety evaluation
 
@@ -122,11 +122,11 @@ The harness also runs an offline adversarial suite: cross-user and cross-case re
 
 ## 6. Limitations and Risks
 
-Telemetry can be absent, delayed, duplicated, misleading, or too coarse to reproduce a UI defect. Identifiers, user descriptions and stack traces may be sensitive, and redaction is a mitigation rather than a guarantee. Remote storage adds network dependency, latency, cost, retention obligations and attack surface, and log content is attacker-controllable, so it must never be treated as trusted instructions. A retrieval tool is not an autonomous repair system: reliable repair also needs repository access, tests, authorization and validation. The evaluation uses synthetic tasks, one small local model and 18 pairs per variant, so its numbers describe this artifact, not the class of systems it resembles; an agent that exhausts its turn budget is recorded as a failure, which penalizes both conditions equally. The probe runtime is a library with an offline demo, not a shipped mobile app, and the server-side rules have been exercised only against mocks.
+Telemetry can be absent, delayed, duplicated, misleading, or too coarse to reproduce a UI defect. Identifiers, user descriptions and stack traces may be sensitive, and redaction is a mitigation rather than a guarantee. Remote storage adds network dependency, latency, cost, retention obligations and attack surface, and log content is attacker-controllable, so it must never be treated as trusted instructions. A retrieval tool is not an autonomous repair system: reliable repair also needs repository access, tests, authorization and validation. The evaluation uses synthetic tasks, one small local model and 30 pairs per variant, so its numbers describe this artifact, not the class of systems it resembles; an agent that exhausts its turn budget is recorded as a failure, which penalizes both conditions equally. The probe runtime is a library with an offline demo, not a shipped mobile app, and the server-side rules have been exercised only against mocks.
 
 ## 7. Conclusion
 
-Task-scoped remote telemetry closes the information gap between a local coding agent and a failure that only happens on the user's device. The design combines bounded, redacted retrieval with a server-enforced protocol that separates evidence collection from repair validation, and instrumentation that can be added and withdrawn at runtime. The artifact implements that protocol end to end — tool library, schema, OAuth backend, dashboard, agent runner, client runtime, paired harness and adversarial suite — with 104 tests passing. What the evidence is worth is reported in Section 5.3: in our two pilots telemetry did not improve repair, so the protocol, not the telemetry channel, carries the contribution. Next steps are a deployment review of the OAuth and key model, a shipped client probe runtime, larger task sets, and turning case-scoped telemetry into a training signal.
+Task-scoped remote telemetry closes the information gap between a local coding agent and a failure that only happens on the user's device. The design combines bounded, redacted retrieval with a server-enforced protocol that separates evidence collection from repair validation, and instrumentation that can be added and withdrawn at runtime. The artifact implements that protocol end to end — tool library, schema, OAuth backend, dashboard, agent runner, client runtime, paired harness and adversarial suite — with 106 tests passing. What the evidence is worth is reported in Section 5.3: in our two pilots telemetry did not improve repair, so the protocol, not the telemetry channel, carries the contribution. Next steps are a deployment review of the OAuth and key model, a shipped client probe runtime, larger task sets, and turning case-scoped telemetry into a training signal.
 
 ## References
 
