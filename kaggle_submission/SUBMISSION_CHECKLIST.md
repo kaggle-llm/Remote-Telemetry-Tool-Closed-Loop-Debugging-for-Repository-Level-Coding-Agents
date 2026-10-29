@@ -13,7 +13,7 @@ Deadline **12 Nov 2026, 23:59 UTC**. Awards: Overall Best Paper ($15k), Best New
 | Project Description | The whole body: abstract, introduction, related work, method, implementation, experiments, limitations, conclusion, references, reproducibility | `kaggle_submission/writeup_body.md` |
 | Media Gallery | Four PNGs below; one of them is the cover image | `kaggle_submission/figures/` |
 | Cover image | `figure_closed_loop.png` (the protocol diagram); `figure_ab_results.png` is the alternative if the cover should show results | `kaggle_submission/figures/` |
-| Project Links | Public repository URL (no login, no paywall). Optional second link: the paper PDF as a public asset. Do not link an arXiv preprint before checking the "unpublished" rule | repo root |
+| Project Links | `https://github.com/kaggle-llm/Remote-Telemetry-Tool-Closed-Loop-Debugging-for-Repository-Level-Coding-Agents` (public, no login, no paywall; default branch `publish/paper-track-submission`). Optional second link: the paper PDF as a public asset at `.../blob/publish/paper-track-submission/telemetry_tool_poc/Remote_Telemetry_Tool_Paper.pdf`. Do not link an arXiv preprint before checking the "unpublished" rule | repo root |
 | Video Links | Leave empty; the paper track does not score a demo video | – |
 | Team name / members | Team label plus every member's Kaggle username; each member must have joined the competition and accepted the rules | – |
 | Final step | Save **and** press Submit. A saved draft is not judged | – |

@@ -1,7 +1,12 @@
 # Remote Telemetry Tool: Research Prototype
 
+Public repository for the **Google - The Gemma 4 Developer Agent Paper Track** submission.
+<https://github.com/kaggle-llm/Remote-Telemetry-Tool-Closed-Loop-Debugging-for-Repository-Level-Coding-Agents>
+
 ## Overview
 This workspace contains an early-stage research prototype for the **Google - The Gemma 4 Developer Agent Paper Track**. It explores bridging remote client telemetry (iOS/Edge apps) with coding agents. The dashboard now has a custom Google OAuth backend and session-scoped key model; live Google/Supabase deployment and agent integration still require configuration and end-to-end validation.
+
+The paper itself is `telemetry_tool_poc/PAPER_DRAFT.md`; the compiled PDF is `telemetry_tool_poc/Remote_Telemetry_Tool_Paper.pdf`, and the Kaggle-ready package is under `kaggle_submission/`.
 
 ---
 
