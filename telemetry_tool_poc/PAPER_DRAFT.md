@@ -1,6 +1,6 @@
-# Remote Client Telemetry for Repository-Level Coding Agents: A Closed-Loop Debugging Protocol
+# Remote Telemetry Tool: Closed-Loop Debugging for Repository-Level Coding Agents
 
-*Consent-scoped device telemetry, withdrawable instrumentation, and server-enforced separation of evidence from repair validation for small local coding agents*
+*Consent-scoped device telemetry, withdrawable probes, and server-enforced separation of evidence from repair validation*
 
 ## Abstract
 

@@ -1,5 +1,5 @@
-prose words: 2958
-raw tokens: 2995
+prose words: 2951
+raw tokens: 2988
 limit: 3000
-prose headroom: 42
-raw headroom: 5
+prose headroom: 49
+raw headroom: 12

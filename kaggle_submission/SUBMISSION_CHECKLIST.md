@@ -8,8 +8,8 @@ Deadline **12 Nov 2026, 23:59 UTC**. Awards: Overall Best Paper ($15k), Best New
 | Field | What to paste | Source in this repo |
 | --- | --- | --- |
 | Tracks / award category | Overall Best Paper; add Best New Resource if the form allows more than one (the paired harness and the tool are the reusable resource) | – |
-| Project Title | `Remote Client Telemetry for Repository-Level Coding Agents: A Closed-Loop Debugging Protocol` | `PAPER_DRAFT.md:1` |
-| Project Subtitle | `Consent-scoped device telemetry, withdrawable instrumentation, and server-enforced separation of evidence from repair validation for small local coding agents` | `PAPER_DRAFT.md:3` (drop the `*`) |
+| Project Title | `Remote Telemetry Tool: Closed-Loop Debugging for Repository-Level Coding Agents` (79 characters; the field caps at 80) | `PAPER_DRAFT.md:1` |
+| Project Subtitle | `Consent-scoped device telemetry, withdrawable probes, and server-enforced separation of evidence from repair validation` (119 characters; the field caps at 140) | `PAPER_DRAFT.md:3` (drop the `*`) |
 | Project Description | The whole body: abstract, introduction, related work, method, implementation, experiments, limitations, conclusion, references, reproducibility | `kaggle_submission/writeup_body.md` |
 | Media Gallery | Four PNGs below; one of them is the cover image | `kaggle_submission/figures/` |
 | Cover image | `figure_closed_loop.png` (the protocol diagram); `figure_ab_results.png` is the alternative if the cover should show results | `kaggle_submission/figures/` |

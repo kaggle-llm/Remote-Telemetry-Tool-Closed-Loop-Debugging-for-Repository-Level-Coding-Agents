@@ -57,19 +57,19 @@ Output is bounded as well as input. Detail objects are redacted recursively agai
 
 Tool output is untrusted data: log strings can contain secrets or prompt-injection text, so the agent must treat retrieved events as evidence, never instructions. Every call is key-authenticated, scoped to one account, and re-checked for ownership server-side (Figure 1).
 
-![Figure 1.](figures/figure_trust_boundaries.png)
+![](https://i.ibb.co/21XTpZqJ/figure-trust-boundaries.png)
 
 ### 3.4 The closed debugging loop
 
 Read access alone does not close the loop: the agent cannot request better evidence, know whether the reproduction succeeded, or verify that a patch fixed the symptom. The protocol is bidirectional, stateful and human-in-the-loop.
 
-![Figure 2.](figures/figure_closed_loop.png)
+![](https://i.ibb.co/848Gmyrh/figure-closed-loop.png)
 
 The client first reports the failure, creating a `debug_cases` row with the user's description and capturing no telemetry. The agent publishes probes (`probe_id`, `target`, bounded `capture` object, `level`) and instructions; the client applies them at runtime and links every resulting event to the case. When the agent asks the user to try again, the case moves to `awaiting_recheck` and the client polls case state with a version counter, so no push infrastructure is required; the client's answer is appended to `case_reports` and moves the case to `rechecked`. The agent then reads only case-scoped evidence, separates observation from inference, inspects the repository and proposes a minimal patch, and calls `finalize_case` to reach `patch_ready`; it cannot skip that state or approve for the user. Only after the user approves may the agent call `cleanup_case`, which deletes the case's telemetry, deactivates its probes so the device stops collecting, and marks the case `resolved`.
 
 Figure 3 draws the state machine enforced in the Express layer and the RPCs: `reported` → `instrumenting` → `awaiting_recheck` → `rechecked` → `patch_ready` → `approved` → `resolved`, with `abandoned` reachable from any non-terminal state and `rejected` returning to `instrumenting`. A disallowed transition yields an error, not an inconsistent record.
 
-![Figure 3.](figures/figure_state_machine.png)
+![](https://i.ibb.co/xKtb19Zp/figure-state-machine.png)
 
 ### 3.5 The client probe runtime
 
@@ -104,7 +104,7 @@ We ran the same 6 synthetic tasks with 5 repeats each on two repository variants
 | Named the responsible module | 24/30 | 25/30 | 21/30 | 21/30 |
 | Telemetry fetches / file edits | 18 / 47 | 14 / 47 | 15 / 40 | 14 / 32 |
 
-![Figure 4.](figures/figure_ab_results.png)
+![](https://i.ibb.co/Y4SyJXgL/figure-ab-results.png)
 
 Telemetry did not improve repair in either variant (exact McNemar p = 0.754 for the compact and 0.453 for the larger). Diagnosis was slightly better with telemetry (compact 18/30 against 14/30, p = 0.344; larger 18/30 against 12/30, p = 0.210) and localization was indistinguishable (p = 1.000 in both). The token difference B − A was −165 in the compact variant (95% bootstrap CI −6,883 to 6,569) and −11,182 in the larger one (−19,630 to −3,391): in the compact repository the context cost is noise; in the larger one condition B spent fewer tokens, although the interval is wide.
 
