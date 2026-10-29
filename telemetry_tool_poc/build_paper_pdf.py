@@ -67,7 +67,9 @@ INK = colors.HexColor("#0f172a")
 MUTED = colors.HexColor("#334155")
 RULE = colors.HexColor("#cbd5e1")
 ACCENT = colors.HexColor("#1d4ed8")
-CODE_BG = colors.HexColor("#f8fafc")
+CODE_BG = colors.HexColor("#f1f5f9")
+INLINE_CODE_BG = "#e2e8f0"
+QUOTE_BG = colors.HexColor("#f1f5f9")
 TABLE_HEAD_BG = colors.HexColor("#eef2ff")
 TABLE_LINE = colors.HexColor("#c7d2fe")
 
@@ -137,7 +139,7 @@ def build_styles():
             borderPadding=(4, 4, 4, 8),
             borderWidth=0.6,
             borderColor=RULE,
-            backColor=colors.HexColor("#f8fafc"),
+            backColor=QUOTE_BG,
             spaceBefore=4,
             spaceAfter=8,
             textColor=INK,
@@ -211,7 +213,10 @@ def inline(text):
         if not token:
             continue
         if token.startswith("`") and token.endswith("`"):
-            parts.append(f'<font face="Courier" size="8.1">{escape(token[1:-1])}</font>')
+            parts.append(
+                f'<font face="Courier" size="8.1" backcolor="{INLINE_CODE_BG}">'
+                f"{escape(token[1:-1])}</font>"
+            )
         elif token.startswith("**") and token.endswith("**"):
             parts.append(f"<b>{escape(token[2:-2])}</b>")
         elif token.startswith("*") and token.endswith("*"):
