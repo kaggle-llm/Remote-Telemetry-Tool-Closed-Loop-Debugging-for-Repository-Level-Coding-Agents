@@ -4,7 +4,7 @@
 
 ## Abstract
 
-Repository-level coding agents read source code and run local tests, but they cannot observe failures on a user's remote device. We present **Remote Telemetry Tool**, a prototype architecture that gives a coding agent task-scoped client telemetry and closes the loop between diagnosis, repair and device-side verification. It combines bounded, redacted retrieval; a server-enforced case state machine the agent cannot skip or approve for the user; and probes published as data and withdrawn at cleanup, so a client emits nothing until asked. We report paired evaluations where the same local Gemma 4 model, prompts, tools and repository copies ran with and without diagnostic telemetry on synthetic client failures, repair decided by a hidden test. Across 36 paired trials in two repository variants telemetry did not improve repair (exact McNemar p = 1.000 in each): it helped where the cause was ambiguous and cost turns where the cause was already visible in the code. The artifact implements the protocol end to end; 102 tests pass, and no deployment-security or production-reliability claim is made.
+Repository-level coding agents read source code and run local tests, but they cannot observe failures on a user's remote device. We present **Remote Telemetry Tool**, a prototype that gives a coding agent task-scoped client telemetry and closes the loop between diagnosis, repair and device-side verification. It combines bounded, redacted retrieval; a server-enforced case state machine the agent cannot skip or approve for the user; and probes published as data and withdrawn at cleanup, so a client emits nothing until asked. We report paired evaluations where the same local Gemma 4 model, prompts, tools and repository copies ran with and without diagnostic telemetry on synthetic client failures, repair decided by a hidden test. Across 36 paired trials in two repository variants telemetry did not improve repair (exact McNemar p = 1.000 in each): it helped where the cause was ambiguous and cost turns where the cause was already visible in the code. The artifact implements the protocol end to end; 102 tests pass, and no deployment-security or production-reliability claim is made.
 
 ## 1. Introduction
 
@@ -24,7 +24,7 @@ Our contribution is a protocol, its client and server halves, and a controlled m
 
 *Repository-level agents.* SWE-bench [1] evaluates whether models resolve real GitHub issues from a description and a repository snapshot; SWE-agent [2] shows that the agent-computer interface, not only the model, materially changes performance; Agentless [3] shows that a simple localization-repair-validation pipeline can beat complex scaffolds. Mobile agent work gets closer: AppAgent [11] operates smartphone apps through a tap-and-swipe action space, Mobile-Agent-v2 [10] adds planning and reflection over screen history, and AndroidWorld [12] validates success by inspecting device system state. Those systems read the device through pixels or a benchmark harness; none lets an agent *select runtime instrumentation* on a user's device.
 
-*Closed-loop repair and runtime evidence.* Autonomic computing [7] contributes the canonical monitor-analyze-plan-execute loop, RepairAgent [8] drives an LLM repair agent with a finite state machine interleaving evidence gathering, repair and validation, and RCAgent [9] diagnoses a deployed cloud system from runtime evidence. On instrumentation, TaintDroid [13] records information-flow facts on a real device, Sage [14] localizes root causes from distributed traces, and fault-injection tooling [20] injects failures into running systems. Our claim is narrower: not a new event format or control loop, but the *protocol* that joins them for an agent debugging one user's device under a human approval gate, with instrumentation published as data, scoped to one case and withdrawn at its end.
+*Closed-loop repair and runtime evidence.* Autonomic computing [7] contributes the canonical monitor-analyze-plan-execute loop, RepairAgent [8] drives an LLM repair agent with a finite state machine interleaving evidence gathering, repair and validation, and RCAgent [9] diagnoses a deployed cloud system from runtime evidence. On instrumentation, TaintDroid [13] records information-flow facts on a real device, Sage [14] localizes root causes from distributed traces, and fault-injection tooling [19] injects dependency failures into running services. Our claim is narrower: not a new event format or control loop, but the *protocol* that joins them for an agent debugging one user's device under a human approval gate, with instrumentation published as data, scoped to one case and withdrawn at its end.
 
 *Untrusted tool output and small local models.* Retrieved or tool-returned content can hijack an agent's instructions [15], and AgentDojo [16] is the standard benchmark for that risk; our tool output is therefore evidence, never instructions, and the harness asserts this. AgentBench [17] reports that open models trail much larger ones, which is why we use a small local Gemma 4 build [4]. SWE-Gym [18] shows that execution feedback can train agents, the natural direction for case-scoped telemetry as a training signal.
 
@@ -38,9 +38,9 @@ An instrumented client emits a compact event when a relevant operation fails: a 
 
 ### 3.2 Storage and access control
 
-The Supabase schema defines app-owned tables for users, sessions, client logs, debug cases, probes, case reports and tool keys. A `client_logs` row carries a bounded `level` and `event` name, a JSONB `detail` object, a server-generated timestamp, and a nullable `case_id` linking the event to the debugging attempt that requested it.
+The Supabase schema defines app-owned tables for users, sessions, client logs, debug cases, probes, case reports and tool keys. A `client_logs` row carries a bounded `level` and `event` name, a JSONB `detail` object, a server timestamp, and a nullable `case_id` linking the event to the debugging attempt that requested it.
 
-The schema is not by itself a security boundary. Every access goes through security-definer RPCs that hash the presented key, resolve it to an owning `user_id`, and verify that the requested case belongs to that user before returning or mutating anything; the functions pin `search_path = ''` and revoke execute privileges from `public`, `anon` and `authenticated` before targeted grants [5, 6]. The backend holds a server-only Supabase secret key that bypasses RLS, so the rules live in application code and RPC bodies; a deployment must add defense in depth and never expose that key to a client or to model context.
+The schema is not by itself a security boundary. Every access goes through security-definer RPCs that hash the presented key, resolve it to an owning `user_id`, and verify that the requested case belongs to that user before returning or mutating anything; the functions pin `search_path = ''` and revoke execute privileges from `public`, `anon` and `authenticated` before targeted grants [5, 6]. The backend holds a server-only Supabase secret key that bypasses RLS, so the rules live in application code and RPC bodies; a deployment must add defense in depth and never expose that key to a client or model context.
 
 ### 3.3 Agent tool boundary
 
@@ -91,7 +91,7 @@ The device half is a library, not a script. `ai_client_demo/probe_runtime.py` po
 
 ### 5.1 Verification performed
 
-Seven suites run deterministically: dashboard logic (7), server (21), tool (12), agent runner (14), harness (18), adversarial (21) and probe runtime (9). The first four are unit tests over mocked clients; the last three cover the harness, the adversarial suite and the client runtime. None is a security audit, a proof of correctness under concurrency, or evidence that a deployed system behaves as the mocks do.
+Seven suites run deterministically: dashboard logic (7), server (21), tool (12), agent runner (14), harness (18), adversarial (21) and probe runtime (9). The first four are unit tests over mocked clients; the last three cover the harness, the adversarial suite and the client runtime. None is a security audit, a concurrency proof, or evidence that a deployment behaves as the mocks do.
 
 ### 5.2 An exploratory run that we do not report as evidence
 
@@ -99,7 +99,7 @@ An earlier three-task run with `gemma4:31b:cloud` is retained in `eval/results/e
 
 ### 5.3 Paired evaluation: task-scoped telemetry against none
 
-We ran the same 6 synthetic tasks with 3 repeats each on two repository variants, giving 18 paired trials per variant (36 in total) against the local fixture backend with `iandiii/gemma4:e4b-64k` (seed 20261028). The compact variant is the application itself; the larger adds ten plausible but wrong modules to reject. Condition A's case-scoped telemetry was empty; condition B's contained the diagnostic events. Within a pair, prompt, tool schemas, repository copy and model were identical, trial order was randomized, repair was decided by the held-out validation test the agent never saw, and root cause was scored by a frozen rubric that cannot observe the condition.
+We ran the same 6 synthetic tasks with 3 repeats each on two repository variants, giving 18 paired trials per variant (36 in total) on the local fixture backend with `iandiii/gemma4:e4b-64k` (seed 20261028). The compact variant is the application itself; the larger adds ten plausible but wrong modules to reject. Condition A's case-scoped telemetry was empty; condition B's contained the diagnostic events. Within a pair, prompt, tool schemas, repository copy and model were identical, trial order was randomized, repair was decided by the held-out validation test the agent never saw, and root cause was scored by a frozen rubric that cannot observe the condition.
 
 | Outcome (18 pairs per variant) | Compact A | Compact B | Larger A | Larger B |
 | --- | --- | --- | --- | --- |
@@ -112,9 +112,9 @@ We ran the same 6 synthetic tasks with 3 repeats each on two repository variants
 
 Telemetry did not improve repair in either variant (exact McNemar p = 1.000 for both). Diagnosis was worse with telemetry (compact 9/18 against 11/18, p = 0.688; larger 10/18 against 13/18, p = 0.453) and localization was no better (p = 1.000 and p = 0.375). The token difference B − A was 897 in the compact variant (95% bootstrap CI −2,443 to 4,475) and −4,171 in the larger one (−14,009 to 4,965): the context cost is not distinguishable from noise.
 
-Per task, telemetry helped where the cause was ambiguous and hurt where the code was self-evident. In the compact variant condition B repaired 2 of 3 stale-auth-cache trials against none for condition A, while on the two tasks whose cause is visible in the code condition A repaired 3 of 3 and condition B 2 of 3. In the larger variant the same pattern appeared for the anchor task (A 0/3, B 2 of 3), while the palette and retry tasks were never repaired by either condition.
+Per task, telemetry helped where the cause was ambiguous and hurt where the code was self-evident. In the compact variant condition B repaired 2 of 3 stale-auth-cache trials against none for condition A, while on the two tasks whose cause is visible in the code condition A repaired 3 of 3 and condition B 2 of 3. In the larger variant the same pattern appeared for the anchor task (A 0/3, B 2 of 3), while the palette task was repaired by neither condition and the retry task only by A (1 of 3).
 
-The pilot supports no general claim that telemetry improves repair, and not the hypothesis that it grows more valuable as the repository grows: the extra distractors hurt both conditions. It supports a narrower claim — telemetry is worth fetching when the repository does not by itself identify the cause, and it can waste turns and introduce a wrong diagnosis when the cause is already obvious. With 18 pairs per variant these differences are suggestions, not effects.
+The pilot supports no general claim that telemetry improves repair, and not the hypothesis that it grows more valuable as the repository grows: the extra distractors hurt both conditions. It supports a narrower claim — telemetry is worth fetching when the repository does not identify the cause, and it can waste turns and introduce a wrong diagnosis when the cause is already obvious. With 18 pairs per variant these differences are suggestions, not effects.
 
 ### 5.4 Adversarial and safety evaluation
 
@@ -126,7 +126,7 @@ Telemetry can be absent, delayed, duplicated, misleading, or too coarse to repro
 
 ## 7. Conclusion
 
-Task-scoped remote telemetry closes the information gap between a local coding agent and a failure that only happens on the user's device. The design combines bounded, redacted retrieval with a server-enforced protocol that separates evidence collection from repair validation, and with instrumentation that can be added and withdrawn at runtime. The artifact implements that protocol end to end — tool library, schema, OAuth backend, dashboard, agent runner, client probe runtime, paired harness and adversarial suite — with 102 tests passing. What the evidence is worth is reported in Section 5.3 without exaggeration: in our two pilots telemetry did not improve repair, so the protocol, not the telemetry channel, carries the contribution. Next steps are a deployment review of the OAuth and key model, a shipped client probe runtime, larger task sets, and turning case-scoped telemetry into a training signal.
+Task-scoped remote telemetry closes the information gap between a local coding agent and a failure that only happens on the user's device. The design combines bounded, redacted retrieval with a server-enforced protocol that separates evidence collection from repair validation, and instrumentation that can be added and withdrawn at runtime. The artifact implements that protocol end to end — tool library, schema, OAuth backend, dashboard, agent runner, client probe runtime, paired harness and adversarial suite — with 102 tests passing. What the evidence is worth is reported in Section 5.3 without exaggeration: in our two pilots telemetry did not improve repair, so the protocol, not the telemetry channel, carries the contribution. Next steps are a deployment review of the OAuth and key model, a shipped client probe runtime, larger task sets, and turning case-scoped telemetry into a training signal.
 
 ## References
 
@@ -148,7 +148,7 @@ Task-scoped remote telemetry closes the information gap between a local coding a
 16. Debenedetti et al., "AgentDojo: A Dynamic Environment to Evaluate Prompt Injection Attacks and Defenses for LLM Agents." NeurIPS 2024 D&B. arXiv:2406.13352.
 17. Liu et al., "AgentBench: Evaluating LLMs as Agents." ICLR 2024. arXiv:2308.03688.
 18. Pan et al., "Training Software Engineering Agents and Verifiers with SWE-Gym." ICML 2025. arXiv:2412.21139.
-19. Assad et al., "Can My Microservice Tolerate an Unreliable Database?" ICSE-Companion 2024. arXiv:2404.01886.
+19. Assad et al., "Can My Microservice Tolerate an Unreliable Database? Resilience Testing with Fault Injection and Visualization." ICSE-Companion 2024. arXiv:2404.01886.
 
 ## Reproducibility
 
