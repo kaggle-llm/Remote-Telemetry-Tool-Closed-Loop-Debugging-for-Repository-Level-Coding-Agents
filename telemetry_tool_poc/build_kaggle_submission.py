@@ -27,6 +27,13 @@ FIGURES = (
 )
 
 
+def hosted_image_links(body_path):
+    if not body_path.is_file():
+        return []
+    existing = body_path.read_text(encoding="utf-8")
+    return re.findall(r"!\[[^\]]*\]\([^)]+\)", existing)
+
+
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
@@ -46,7 +53,14 @@ def main():
 
     body = text.split("\n", 1)[1].lstrip("\n")
     body = re.sub(r"^\*[^*]+\*\n\n", "", body)
-    (OUTPUT_DIR / "writeup_body.md").write_text(body, encoding="utf-8", newline="\n")
+
+    body_path = OUTPUT_DIR / "writeup_body.md"
+    hosted = hosted_image_links(body_path)
+    local = re.findall(r"!\[[^\]]*\]\([^)]+\)", body)
+    if len(hosted) == len(local) and hosted:
+        iterator = iter(hosted)
+        body = re.sub(r"!\[[^\]]*\]\([^)]+\)", lambda _: next(iterator), body)
+    body_path.write_text(body, encoding="utf-8", newline="\n")
 
     prose = len(prose_words(text))
     raw = len(raw_tokens(text))

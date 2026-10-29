@@ -35,7 +35,7 @@ This workspace contains an early-stage research prototype for the **Google - The
    - Real-world end-to-end debugging scenario: resolving an un-opening iOS highlight color palette using the closed-loop telemetry protocol.
 
 10. **`telemetry_tool_poc/PAPER_DRAFT.md`**
-    - Research write-up for the Paper Track (2,955 words by prose count, 2,992 including code and table markup, under the 3,000-word limit), with abstract, introduction, related work, method, implementation, experiments/evaluation protocol, limitations, conclusion, and references.
+    - Research write-up for the Paper Track (2,951 words by prose count, 2,988 including code and table markup, under the 3,000-word limit), with abstract, introduction, related work, method, implementation, experiments/evaluation protocol, limitations, conclusion, and references.
 
 11. **`telemetry_tool_poc/Remote_Telemetry_Tool_Paper.pdf`**
     - Compiled submission PDF built from the write-up by `build_paper_pdf.py` (7 pages, four figures, two tables, PDF bookmarks/outline that open in fit-width view).
